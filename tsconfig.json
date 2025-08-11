@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+      "module": "NodeNext",
+      "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
+      "target": "ES2022",
+      "noImplicitAny": true,
+      "moduleResolution": "NodeNext",
+      "sourceMap": true,
+      "rootDir": "./src",
+      "outDir": "dist",
+      "baseUrl": ".",
+      "paths": {
+          "@/*": ["./src/*"]
+      }
+  },
+  "exclude": ["node_modules", "dist", "./**/*.test.ts"],
+  "include": ["./src/**/*"]
+}
