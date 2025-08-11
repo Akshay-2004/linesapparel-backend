@@ -20,22 +20,14 @@ validateShopifyConfig();
 // Configure middleware stack - order matters
 app.use(express.json()); // Parse JSON request bodies
 app.use(cookieParser()); // Parse cookies from request headers
-const allowedOrigins = [
-  "https://linesapparel.ca",
-  "https://www.linesapparel.ca",
-  "http://localhost:3000" // keep for local dev
-];
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, etc.)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
+    origin: [
+      "https://linesapparel.ca",
+      "https://www.linesapparel.ca",
+      "http://localhost:3000" // keep for local dev
+    ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
@@ -43,6 +35,7 @@ app.use(
     maxAge: 86400
   })
 );
+
 
 // Mount API routes under /api prefix
 app.use("/api", apiRouter);
