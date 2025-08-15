@@ -460,3 +460,89 @@ export const deleteUserAddress = async (req: Request, res: Response) => {
     });
   }
 };
+
+// Add product to wishlist
+export const addToWishlist = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { productId } = req.body;
+    const requestingUser = (req as any).user;
+
+    // Only allow user to modify their own wishlist or super admin
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === EUserRole.superAdmin;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: 'Access denied. You can only modify your own wishlist.' });
+    }
+
+    if (!productId) {
+      return res.status(400).json({ success: false, message: 'Product ID is required.' });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Add product to wishlist if not already present
+    if (!user.wishlisted.includes(productId)) {
+      user.wishlisted.push(productId);
+      await user.save();
+    }
+
+    res.status(200).json({ success: true, message: 'Product added to wishlist', wishlist: user.wishlisted });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Error adding to wishlist', error: error.message });
+  }
+};
+
+// Remove product from wishlist
+export const removeFromWishlist = async (req: Request, res: Response) => {
+  try {
+    const { id, productId } = req.params;
+    const requestingUser = (req as any).user;
+
+    // Only allow user to modify their own wishlist or super admin
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === EUserRole.superAdmin;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: 'Access denied. You can only modify your own wishlist.' });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+  user.wishlisted = user.wishlisted.filter((pid) => pid !== productId);
+  await user.save();
+
+  res.status(200).json({ success: true, message: 'Product removed from wishlist', wishlist: user.wishlisted });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Error removing from wishlist', error: error.message });
+  }
+};
+
+// Get user's wishlist
+export const getWishlist = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const requestingUser = (req as any).user;
+
+    // Only allow user to view their own wishlist or super admin
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === EUserRole.superAdmin;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: 'Access denied. You can only view your own wishlist.' });
+    }
+
+    const user = await User.findById(id).select('wishlisted');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.status(200).json({ success: true, wishlist: user.wishlisted });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Error fetching wishlist', error: error.message });
+  }
+};

@@ -1420,6 +1420,10 @@ var UserSchema = new mongoose6.Schema({
   verified: {
     type: Boolean,
     default: false
+  },
+  wishlisted: {
+    type: [String],
+    default: []
   }
 }, { timestamps: true });
 UserSchema.pre("save", async function(next) {
@@ -3996,6 +4000,70 @@ var deleteUserAddress = async (req, res) => {
     });
   }
 };
+var addToWishlist = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { productId } = req.body;
+    const requestingUser = req.user;
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === "super_admin" /* superAdmin */;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only modify your own wishlist." });
+    }
+    if (!productId) {
+      return res.status(400).json({ success: false, message: "Product ID is required." });
+    }
+    const user = await user_model_default.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    if (!user.wishlisted.includes(productId)) {
+      user.wishlisted.push(productId);
+      await user.save();
+    }
+    res.status(200).json({ success: true, message: "Product added to wishlist", wishlist: user.wishlisted });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error adding to wishlist", error: error.message });
+  }
+};
+var removeFromWishlist = async (req, res) => {
+  try {
+    const { id, productId } = req.params;
+    const requestingUser = req.user;
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === "super_admin" /* superAdmin */;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only modify your own wishlist." });
+    }
+    const user = await user_model_default.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    user.wishlisted = user.wishlisted.filter((pid) => pid !== productId);
+    await user.save();
+    res.status(200).json({ success: true, message: "Product removed from wishlist", wishlist: user.wishlisted });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error removing from wishlist", error: error.message });
+  }
+};
+var getWishlist = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requestingUser = req.user;
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === "super_admin" /* superAdmin */;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only view your own wishlist." });
+    }
+    const user = await user_model_default.findById(id).select("wishlisted");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    res.status(200).json({ success: true, wishlist: user.wishlisted });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching wishlist", error: error.message });
+  }
+};
 
 // src/routes/user.routes.ts
 var userRouter = express7__default.default.Router();
@@ -4009,6 +4077,9 @@ userRouter.get("/", validateSuperAdminAccess, getAllUsers);
 userRouter.get("/stats/overview", validateSuperAdminAccess, getUserStats);
 userRouter.patch("/:id/role", validateSuperAdminAccess, changeUserRole);
 userRouter.delete("/:id", validateSuperAdminAccess, deleteUser);
+userRouter.post("/:id/wishlist", addToWishlist);
+userRouter.delete("/:id/wishlist/:productId", removeFromWishlist);
+userRouter.get("/:id/wishlist", getWishlist);
 var user_routes_default = userRouter;
 var reviewSchema = new mongoose6.Schema(
   {
@@ -4821,15 +4892,17 @@ app.use(express7__default.default.json());
 app.use(cookieParser__default.default());
 app.use(
   cors__default.default({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    // Allow requests only from configured client
+    origin: [
+      "https://linesapparel.ca",
+      "https://www.linesapparel.ca",
+      "http://localhost:3000"
+      // keep for local dev
+    ],
     credentials: true,
-    // Enable cookies and authorization headers
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     exposedHeaders: ["Set-Cookie"],
     maxAge: 86400
-    // CORS preflight cache time (24 hour)
   })
 );
 app.use("/api", api_router_default);

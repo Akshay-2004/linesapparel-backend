@@ -24,6 +24,7 @@ export interface IUser extends Document {
     createdAt: Date;
     updatedAt: Date;
     comparePassword(candidatePassword: string): Promise<boolean>;
+    wishlisted: string[];
 }
 
 const UserSchema = new Schema<IUser>({
@@ -82,6 +83,10 @@ const UserSchema = new Schema<IUser>({
     verified: {
         type: Boolean,
         default: false
+    },
+    wishlisted: {
+        type: [String],
+        default: []
     }
 }, { timestamps: true });
 

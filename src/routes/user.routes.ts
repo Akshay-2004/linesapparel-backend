@@ -22,4 +22,9 @@ userRouter.get('/stats/overview', validateSuperAdminAccess, userController.getUs
 userRouter.patch('/:id/role', validateSuperAdminAccess, userController.changeUserRole);
 userRouter.delete('/:id', validateSuperAdminAccess, userController.deleteUser);
 
+// Wishlist routes
+userRouter.post('/:id/wishlist', userController.addToWishlist); // Add product to wishlist
+userRouter.delete('/:id/wishlist/:productId', userController.removeFromWishlist); // Remove product from wishlist
+userRouter.get('/:id/wishlist', userController.getWishlist); // Get user's wishlist
+
 export default userRouter;
