@@ -13,6 +13,7 @@ var multerStorageCloudinary = require('multer-storage-cloudinary');
 var multer = require('multer');
 var fs = require('fs');
 var axios = require('axios');
+var uuid = require('uuid');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
@@ -3054,10 +3055,155 @@ var getLegalPageTypes = async (req, res) => {
 };
 var uploadHomepageImages = getHomepageUploadMiddleware();
 var uploadLegalDocument = upload.legalDocument.single("markdownFile");
+var getNavbar = async (req, res) => {
+  try {
+    const navbar = await Page.findOne({ path: "navbar" }).populate("createdBy updatedBy", "email name").sort({ createdAt: -1 });
+    if (!navbar) {
+      const defaultNavbarData = {
+        navItems: [
+          {
+            id: uuid.v4(),
+            title: "WOMEN",
+            order: 1,
+            categories: [
+              {
+                id: uuid.v4(),
+                title: "Women's Clothing",
+                order: 1,
+                items: [
+                  { label: "T-Shirts", keyword: "womens-tshirts", href: "/womens/t-shirts", order: 1 },
+                  { label: "Skirts", keyword: "womens-skirts", href: "/womens/skirts", order: 2 },
+                  { label: "Shorts", keyword: "womens-shorts", href: "/womens/shorts", order: 3 },
+                  { label: "Jeans", keyword: "womens-jeans", href: "/womens/jeans", order: 4 }
+                ]
+              }
+            ]
+          },
+          {
+            id: uuid.v4(),
+            title: "MEN",
+            order: 2,
+            categories: [
+              {
+                id: uuid.v4(),
+                title: "Men's Clothing",
+                order: 1,
+                items: [
+                  { label: "T-Shirts", keyword: "mens-tshirts", href: "/mens/t-shirts", order: 1 },
+                  { label: "Shirts", keyword: "mens-shirts", href: "/mens/shirts", order: 2 },
+                  { label: "Jeans", keyword: "mens-jeans", href: "/mens/jeans", order: 3 }
+                ]
+              }
+            ]
+          }
+        ]
+      };
+      return res.status(200).json({
+        success: true,
+        message: "Default navbar configuration retrieved",
+        data: defaultNavbarData
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Navbar configuration retrieved successfully",
+      data: navbar.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving navbar configuration",
+      error: error.message
+    });
+  }
+};
+var updateNavbar = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { navItems } = req.body;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    if (!navItems || !Array.isArray(navItems)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid navbar data. navItems array is required."
+      });
+    }
+    const processedNavItems = navItems.map((section, sectionIndex) => ({
+      id: uuid.v4(),
+      title: section.title,
+      order: sectionIndex + 1,
+      categories: section.categories.map((category, categoryIndex) => ({
+        id: uuid.v4(),
+        title: category.title,
+        order: categoryIndex + 1,
+        items: category.items.map((item, itemIndex) => ({
+          label: item.label,
+          keyword: item.keyword,
+          href: item.href,
+          order: itemIndex + 1
+        }))
+      }))
+    }));
+    const navbarData = {
+      navItems: processedNavItems
+    };
+    let navbar = await Page.findOne({ path: "navbar" });
+    if (navbar) {
+      navbar.data = navbarData;
+      navbar.updatedBy = userId;
+      navbar.version = (navbar.version || 1) + 1;
+      await navbar.save();
+    } else {
+      navbar = new Page({
+        name: "Navbar Configuration",
+        path: "navbar",
+        data: navbarData,
+        createdBy: userId,
+        updatedBy: userId,
+        isActive: true,
+        version: 1
+      });
+      await navbar.save();
+    }
+    res.status(200).json({
+      success: true,
+      message: "Navbar configuration updated successfully",
+      data: navbar.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating navbar configuration",
+      error: error.message
+    });
+  }
+};
+var deleteNavbar = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    await Page.deleteOne({ path: "navbar" });
+    res.status(200).json({
+      success: true,
+      message: "Navbar configuration reset to default successfully"
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error resetting navbar configuration",
+      error: error.message
+    });
+  }
+};
 
 // src/routes/pages.routes.ts
 var pagesRouter = express7__default.default.Router();
 pagesRouter.get("/homepage", getHomepage);
+pagesRouter.get("/navbar", getNavbar);
 pagesRouter.get("/legal", getAllLegalPages);
 pagesRouter.get("/legal/types", getLegalPageTypes);
 pagesRouter.get("/legal/:type", getLegalPageByType);
@@ -3066,6 +3212,8 @@ pagesRouter.use(validateAdminAccess);
 pagesRouter.post("/homepage", uploadHomepageImages, createHomepage);
 pagesRouter.put("/homepage", uploadHomepageImages, updateHomepage);
 pagesRouter.delete("/homepage", deleteHomepage);
+pagesRouter.put("/navbar", updateNavbar);
+pagesRouter.delete("/navbar", deleteNavbar);
 pagesRouter.put("/legal/:type", uploadLegalDocument, createOrUpdateLegalPage);
 pagesRouter.delete("/legal/:type", deleteLegalPage);
 pagesRouter.get("/", getAllPages);

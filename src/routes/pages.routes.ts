@@ -7,6 +7,9 @@ const pagesRouter = express.Router();
 // Public routes - Homepage specific
 pagesRouter.get('/homepage', pageController.getHomepage);
 
+// Public routes - Navbar configuration
+pagesRouter.get('/navbar', pageController.getNavbar);
+
 // Public routes - Legal pages
 pagesRouter.get('/legal', pageController.getAllLegalPages);
 pagesRouter.get('/legal/types', pageController.getLegalPageTypes);
@@ -21,6 +24,10 @@ pagesRouter.use(validateAdminAccess);
 pagesRouter.post('/homepage', pageController.uploadHomepageImages, pageController.createHomepage);
 pagesRouter.put('/homepage', pageController.uploadHomepageImages, pageController.updateHomepage);
 pagesRouter.delete('/homepage', pageController.deleteHomepage);
+
+// Admin only routes - Navbar management
+pagesRouter.put('/navbar', pageController.updateNavbar);
+pagesRouter.delete('/navbar', pageController.deleteNavbar);
 
 // Admin only routes - Legal pages management
 pagesRouter.put('/legal/:type', pageController.uploadLegalDocument, pageController.createOrUpdateLegalPage);
