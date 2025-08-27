@@ -3783,6 +3783,33 @@ inquiryRouter.delete("/:id", deleteInquiry);
 var inquiry_routes_default = inquiryRouter;
 
 // src/controllers/user.controller.ts
+var getWishlistWithDetails = async (wishlisted) => {
+  const wishlistItems = [];
+  for (const productId of wishlisted) {
+    try {
+      const numericId = productId.toString().match(/(\d+)$/)?.[1] || productId;
+      const product = await shopify_service_default.getProduct(numericId);
+      if (product) {
+        const formattedProduct = {
+          id: product.id,
+          title: product.title,
+          handle: product.handle,
+          price: product.variants?.[0]?.price || "0.00",
+          compareAtPrice: product.variants?.[0]?.compare_at_price,
+          image: product.images?.[0]?.src || product.image?.src,
+          available: product.variants?.some((variant) => variant.available) || false
+        };
+        wishlistItems.push(formattedProduct);
+      }
+    } catch (error) {
+      console.error(`Error fetching product ${productId}:`, error);
+    }
+  }
+  return {
+    wishlistItems,
+    wishlisted
+  };
+};
 var getAllUsers = async (req, res) => {
   try {
     const { role, page = 1, limit = 20, search } = req.query;
@@ -4169,7 +4196,12 @@ var addToWishlist = async (req, res) => {
       user.wishlisted.push(productId);
       await user.save();
     }
-    res.status(200).json({ success: true, message: "Product added to wishlist", wishlist: user.wishlisted });
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+    res.status(200).json({
+      success: true,
+      message: "Product added to wishlist",
+      data: wishlistData
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error adding to wishlist", error: error.message });
   }
@@ -4189,7 +4221,12 @@ var removeFromWishlist = async (req, res) => {
     }
     user.wishlisted = user.wishlisted.filter((pid) => pid !== productId);
     await user.save();
-    res.status(200).json({ success: true, message: "Product removed from wishlist", wishlist: user.wishlisted });
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+    res.status(200).json({
+      success: true,
+      message: "Product removed from wishlist",
+      data: wishlistData
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error removing from wishlist", error: error.message });
   }
@@ -4207,7 +4244,11 @@ var getWishlist = async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
-    res.status(200).json({ success: true, wishlist: user.wishlisted });
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+    res.status(200).json({
+      success: true,
+      data: wishlistData
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error fetching wishlist", error: error.message });
   }

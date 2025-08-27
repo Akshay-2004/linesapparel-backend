@@ -1,5 +1,41 @@
 import { Request, Response } from 'express';
 import User, { EUserRole } from '@/models/user.model';
+import shopifyService from '@/services/shopify.service';
+
+// Helper function to fetch wishlist with product details
+const getWishlistWithDetails = async (wishlisted: string[]) => {
+  const wishlistItems = [];
+  
+  for (const productId of wishlisted) {
+    try {
+      // Extract numeric ID from Shopify GraphQL global ID
+      const numericId = productId.toString().match(/(\d+)$/)?.[1] || productId;
+      const product = await shopifyService.getProduct(numericId);
+      
+      if (product) {
+        // Format product data for frontend
+        const formattedProduct = {
+          id: product.id,
+          title: product.title,
+          handle: product.handle,
+          price: product.variants?.[0]?.price || '0.00',
+          compareAtPrice: product.variants?.[0]?.compare_at_price,
+          image: product.images?.[0]?.src || product.image?.src,
+          available: product.variants?.some((variant: any) => variant.available) || false
+        };
+        wishlistItems.push(formattedProduct);
+      }
+    } catch (error) {
+      console.error(`Error fetching product ${productId}:`, error);
+      // Continue with other products even if one fails
+    }
+  }
+  
+  return {
+    wishlistItems,
+    wishlisted
+  };
+};
 
 // Get all users (super admin only)
 export const getAllUsers = async (req: Request, res: Response) => {
@@ -490,7 +526,14 @@ export const addToWishlist = async (req: Request, res: Response) => {
       await user.save();
     }
 
-    res.status(200).json({ success: true, message: 'Product added to wishlist', wishlist: user.wishlisted });
+    // Fetch wishlist with product details
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Product added to wishlist', 
+      data: wishlistData
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Error adding to wishlist', error: error.message });
   }
@@ -514,10 +557,17 @@ export const removeFromWishlist = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-  user.wishlisted = user.wishlisted.filter((pid) => pid !== productId);
-  await user.save();
+    user.wishlisted = user.wishlisted.filter((pid) => pid !== productId);
+    await user.save();
 
-  res.status(200).json({ success: true, message: 'Product removed from wishlist', wishlist: user.wishlisted });
+    // Fetch wishlist with product details
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Product removed from wishlist', 
+      data: wishlistData
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Error removing from wishlist', error: error.message });
   }
@@ -541,7 +591,13 @@ export const getWishlist = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    res.status(200).json({ success: true, wishlist: user.wishlisted });
+    // Fetch wishlist with product details
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+
+    res.status(200).json({ 
+      success: true, 
+      data: wishlistData
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: 'Error fetching wishlist', error: error.message });
   }
