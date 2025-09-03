@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User, { EUserRole, IUser } from '@/models/user.model';
+import shopifyService from '@/services/shopify.service';
 
 const sendTokenResponse = (user: IUser, statusCode: number, res: Response, req: Request) => {
   // Get fingerprinting information
@@ -75,16 +76,59 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    // Create user
+    // Split name into first and last name for Shopify
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    console.log('🛍️ Creating Shopify customer for:', email);
+    
+    // Create customer in Shopify first
+    let shopifyCustomer;
+    let customerAccessToken;
+    
+    try {
+      shopifyCustomer = await shopifyService.createStorefrontCustomer({
+        email,
+        password,
+        firstName,
+        lastName,
+        phone
+      });
+
+      console.log('✅ Shopify customer created:', shopifyCustomer?.id);
+
+      // Get customer access token
+      const tokenData = await shopifyService.createCustomerAccessToken(email, password);
+      customerAccessToken = tokenData;
+
+      console.log('✅ Customer access token obtained');
+    } catch (shopifyError: any) {
+      console.error('❌ Shopify customer creation failed:', shopifyError.message);
+      res.status(400).json({ 
+        message: 'Failed to create Shopify customer', 
+        error: shopifyError.message 
+      });
+      return;
+    }
+
+    // Create user in our database with Shopify customer info
     const user = await User.create({
       name,
       email,
       password,
-      ...(phone ? { phone } : {})
+      ...(phone ? { phone } : {}),
+      shopify: {
+        customerId: shopifyCustomer?.id,
+        customerAccessToken: customerAccessToken?.accessToken,
+        customerAccessTokenExpiresAt: new Date(customerAccessToken?.expiresAt)
+      }
     });
 
+    console.log('✅ User created with Shopify integration');
     sendTokenResponse(user, 201, res, req);
   } catch (error: any) {
+    console.error('❌ Registration failed:', error);
     res.status(500).json({ message: 'Registration failed', error: error.message });
   }
 };
@@ -116,12 +160,45 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         res.status(401).json({ message: 'Invalid credentials' });
         return;
       }
+
+      console.log('🔐 User authenticated, getting Shopify customer access token');
+      
+      // Get or refresh Shopify customer access token
+      let customerAccessToken = user.shopify?.customerAccessToken;
+      let tokenExpiresAt = user.shopify?.customerAccessTokenExpiresAt;
+      
+      // Check if token exists and is not expired
+      const now = new Date();
+      const tokenExpired = !tokenExpiresAt || tokenExpiresAt <= now;
+      
+      if (!customerAccessToken || tokenExpired) {
+        console.log('🔄 Creating new customer access token');
+        try {
+          const tokenData = await shopifyService.createCustomerAccessToken(email, password);
+          customerAccessToken = tokenData.accessToken;
+          tokenExpiresAt = new Date(tokenData.expiresAt);
+          
+          // Update user with new token info
+          await User.findByIdAndUpdate(user._id, {
+            'shopify.customerAccessToken': customerAccessToken,
+            'shopify.customerAccessTokenExpiresAt': tokenExpiresAt
+          });
+          
+          console.log('✅ New customer access token created and saved');
+        } catch (shopifyError: any) {
+          console.error('❌ Failed to get Shopify customer access token:', shopifyError);
+          // Don't fail the login if Shopify token creation fails
+        }
+      } else {
+        console.log('✅ Using existing valid customer access token');
+      }
       
       sendTokenResponse(user, 200, res, req);
     } catch (error) {
       res.status(401).json({ message: 'Invalid credentials' });
     }
   } catch (error: any) {
+    console.error('❌ Login failed:', error);
     res.status(500).json({ message: 'Login failed', error: error.message });
   }
 };

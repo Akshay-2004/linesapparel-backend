@@ -2,7 +2,7 @@ import { Router } from "express";
 import * as shopifyController from "@/controllers/shopify.controller";
 import * as webhookController from "@/controllers/webhook.controller";
 import { validateShopifyWebhook } from "@/middleware/validateWebhook.middleware";
-import { validateAdminAccess } from "@/middleware/auth.middleware";
+import { validateAdminAccess, validateUserAccess } from "@/middleware/auth.middleware";
 
 const shopifyRouter = Router();
 
@@ -40,6 +40,7 @@ shopifyRouter.get(
 // Orders
 shopifyRouter.get("/orders", shopifyController.getOrders);
 shopifyRouter.get("/orders/:id", shopifyController.getOrder);
+shopifyRouter.get("/orders/user/my-orders", validateUserAccess, shopifyController.getUserOrders);
 shopifyRouter.post(
   "/orders",
   // validateAdminAccess,

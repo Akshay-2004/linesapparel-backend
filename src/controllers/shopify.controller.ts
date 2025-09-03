@@ -730,3 +730,78 @@ export const getProductByHandle = async (req: Request, res: Response) => {
     );
   }
 };
+
+export const getUserOrders = async (req: any, res: Response) => {
+  try {
+    // Get user email from the authenticated user
+    const userEmail = req.user.email;
+    
+    console.log(`🔐 [getUserOrders] Authenticated user:`, {
+      user_id: req.user._id,
+      email: userEmail,
+      name: req.user.name,
+      role: req.user.role
+    });
+    
+    if (!userEmail) {
+      console.log(`❌ [getUserOrders] No email found for authenticated user`);
+      return sendResponse(res, 400, "User email not found");
+    }
+
+    // Get user from database to check Shopify customer access token
+    const User = require('@/models/user.model').default;
+    const user = await User.findById(req.user._id);
+    
+    if (!user || !user.shopify?.customerAccessToken) {
+      console.log(`❌ [getUserOrders] No Shopify customer access token found for user`);
+      return sendResponse(res, 400, "Shopify customer access token not found. Please re-login to connect your account.");
+    }
+
+    // Check if token is expired
+    const now = new Date();
+    const tokenExpired = !user.shopify.customerAccessTokenExpiresAt || user.shopify.customerAccessTokenExpiresAt <= now;
+    
+    if (tokenExpired) {
+      console.log(`❌ [getUserOrders] Customer access token expired`);
+      return sendResponse(res, 401, "Customer access token expired. Please re-login to refresh your session.");
+    }
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    console.log(`📋 [getUserOrders] Request parameters:`, { 
+      page, 
+      limit, 
+      userEmail,
+      hasToken: !!user.shopify.customerAccessToken,
+      tokenExpires: user.shopify.customerAccessTokenExpiresAt
+    });
+
+    // Fetch customer orders using Storefront API with customer access token
+    const ordersData = await shopifyService.getCustomerOrdersWithAccessToken(
+      user.shopify.customerAccessToken,
+      {
+        first: limit,
+        // Note: Storefront API uses cursor-based pagination, not page-based
+        // For simplicity, we'll fetch orders without cursor pagination for now
+      }
+    );
+
+    console.log(`📦 [getUserOrders] Orders data retrieved:`, {
+      orders_count: ordersData.orders.length,
+      customer: ordersData.customer,
+      total_count: ordersData.totalCount
+    });
+
+    return sendResponse(res, 200, "User orders retrieved successfully", ordersData);
+  } catch (error: any) {
+    console.error(`❌ [getUserOrders] Error:`, error);
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch user orders",
+      undefined,
+      error.message
+    );
+  }
+};

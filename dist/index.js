@@ -1,13 +1,13 @@
 'use strict';
 
+var mongoose6 = require('mongoose');
+var bcrypt = require('bcrypt');
 var dotenv = require('dotenv');
 var express7 = require('express');
 var cookieParser = require('cookie-parser');
 var cors = require('cors');
 var crypto = require('crypto');
 var jwt = require('jsonwebtoken');
-var mongoose6 = require('mongoose');
-var bcrypt = require('bcrypt');
 var cloudinary = require('cloudinary');
 var multerStorageCloudinary = require('multer-storage-cloudinary');
 var multer = require('multer');
@@ -17,19 +17,146 @@ var uuid = require('uuid');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
+var mongoose6__default = /*#__PURE__*/_interopDefault(mongoose6);
+var bcrypt__default = /*#__PURE__*/_interopDefault(bcrypt);
 var dotenv__default = /*#__PURE__*/_interopDefault(dotenv);
 var express7__default = /*#__PURE__*/_interopDefault(express7);
 var cookieParser__default = /*#__PURE__*/_interopDefault(cookieParser);
 var cors__default = /*#__PURE__*/_interopDefault(cors);
 var crypto__default = /*#__PURE__*/_interopDefault(crypto);
 var jwt__default = /*#__PURE__*/_interopDefault(jwt);
-var mongoose6__default = /*#__PURE__*/_interopDefault(mongoose6);
-var bcrypt__default = /*#__PURE__*/_interopDefault(bcrypt);
 var multer__default = /*#__PURE__*/_interopDefault(multer);
 var fs__default = /*#__PURE__*/_interopDefault(fs);
 var axios__default = /*#__PURE__*/_interopDefault(axios);
 
-// src/index.ts
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/models/user.model.ts
+var user_model_exports = {};
+__export(user_model_exports, {
+  EUserRole: () => EUserRole,
+  default: () => user_model_default
+});
+var EUserRole, UserSchema, user_model_default;
+var init_user_model = __esm({
+  "src/models/user.model.ts"() {
+    EUserRole = /* @__PURE__ */ ((EUserRole3) => {
+      EUserRole3["client"] = "client";
+      EUserRole3["admin"] = "admin";
+      EUserRole3["superAdmin"] = "super_admin";
+      return EUserRole3;
+    })(EUserRole || {});
+    UserSchema = new mongoose6.Schema({
+      email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
+      },
+      password: {
+        type: String,
+        required: true,
+        minlength: 6
+      },
+      address: {
+        street: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        city: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        state: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        zip: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        country: {
+          type: String,
+          trim: true,
+          required: false
+        }
+      },
+      role: {
+        type: String,
+        enum: Object.values(EUserRole),
+        default: "client" /* client */
+      },
+      name: {
+        type: String,
+        required: true
+      },
+      phone: {
+        type: String,
+        trim: true
+      },
+      verified: {
+        type: Boolean,
+        default: false
+      },
+      wishlisted: {
+        type: [String],
+        default: []
+      },
+      shopify: {
+        customerId: {
+          type: String,
+          required: false
+        },
+        customerAccessToken: {
+          type: String,
+          required: false
+        },
+        customerAccessTokenExpiresAt: {
+          type: Date,
+          required: false
+        }
+      }
+    }, { timestamps: true });
+    UserSchema.pre("save", async function(next) {
+      if (!this.isModified("password")) return next();
+      try {
+        const salt = await bcrypt__default.default.genSalt(10);
+        this.password = await bcrypt__default.default.hash(this.password, salt);
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+    UserSchema.methods.comparePassword = async function(candidatePassword) {
+      return await bcrypt__default.default.compare(candidatePassword, this.password);
+    };
+    user_model_default = mongoose6__default.default.model("User", UserSchema);
+  }
+});
 
 // src/config/shopify.config.ts
 var shopifyConfig = {
@@ -37,6 +164,7 @@ var shopifyConfig = {
   apiSecret: process.env.SHOPIFY_API_SECRET || "",
   storeUrl: process.env.SHOPIFY_STORE_URL || "",
   accessToken: process.env.SHOPIFY_ACCESS_TOKEN || "",
+  storefrontToken: process.env.SHOPIFY_STOREFRONT_TOKEN || "",
   apiVersion: "2023-07",
   // Using a stable API version
   scopes: [
@@ -74,10 +202,13 @@ var shopifyConfig = {
   }
 };
 var validateShopifyConfig = () => {
-  const { apiKey, apiSecret, storeUrl, accessToken } = shopifyConfig;
+  const { apiKey, apiSecret, storeUrl, accessToken, storefrontToken } = shopifyConfig;
   if (!apiKey || !apiSecret || !storeUrl || !accessToken) {
     console.error("\u274C Missing Shopify configuration. Please check your .env file.");
     return false;
+  }
+  if (!storefrontToken) {
+    console.warn("\u26A0\uFE0F Missing Shopify Storefront API token. Customer order features may not work.");
   }
   if (!storeUrl.includes("myshopify.com") && !storeUrl.includes("shopify.com")) {
     console.warn("\u26A0\uFE0F Shopify store URL might be invalid. Expected format: yourstore.myshopify.com");
@@ -162,6 +293,41 @@ var ShopifyService = class {
       return responseData;
     } catch (error) {
       console.error("Error making GraphQL request:", error);
+      throw error;
+    }
+  }
+  async makeStorefrontRequest(query, variables) {
+    const url = `https://${shopifyConfig.storeUrl}/api/${shopifyConfig.apiVersion}/graphql.json`;
+    const options = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": shopifyConfig.storefrontToken
+      },
+      body: JSON.stringify({
+        query,
+        variables: variables || {}
+      })
+    };
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Shopify Storefront API error (${response.status}): ${JSON.stringify(
+            errorData
+          )}`
+        );
+      }
+      const responseData = await response.json();
+      if (responseData.errors && responseData.errors.length > 0) {
+        throw new Error(
+          `Storefront GraphQL errors: ${JSON.stringify(responseData.errors)}`
+        );
+      }
+      return responseData;
+    } catch (error) {
+      console.error("Error making Storefront GraphQL request:", error);
       throw error;
     }
   }
@@ -279,6 +445,198 @@ var ShopifyService = class {
       "POST"
     );
     return response.data;
+  }
+  async getOrdersByEmail(email, params = {}) {
+    try {
+      const limit = params.limit || 50;
+      console.log(`\u{1F50D} [getOrdersByEmail] Searching for orders with email: ${email}`);
+      console.log(`\u{1F4CA} [getOrdersByEmail] Request parameters:`, { limit, params });
+      const apiUrl = `/orders.json?limit=250&status=any&financial_status=any&fulfillment_status=any`;
+      console.log(`\u{1F310} [getOrdersByEmail] Making API request to: ${apiUrl}`);
+      const ordersResponse = await this.makeRequest(apiUrl);
+      console.log(`\u{1F4E6} [getOrdersByEmail] Raw Shopify API response status:`, ordersResponse.status);
+      console.log(`\u{1F4E6} [getOrdersByEmail] Total orders retrieved:`, ordersResponse.data?.orders?.length || 0);
+      if (!ordersResponse.data || !ordersResponse.data.orders) {
+        console.log(`\u274C [getOrdersByEmail] No orders data in response`);
+        return {
+          orders: [],
+          customer: null,
+          total_count: 0,
+          current_page: 1,
+          total_pages: 0,
+          has_next_page: false,
+          has_previous_page: false
+        };
+      }
+      if (ordersResponse.data.orders.length > 0) {
+        console.log(`\u{1F4CB} [getOrdersByEmail] Sample order structure:`, {
+          id: ordersResponse.data.orders[0].id,
+          email: ordersResponse.data.orders[0].email,
+          created_at: ordersResponse.data.orders[0].created_at,
+          financial_status: ordersResponse.data.orders[0].financial_status,
+          total_price: ordersResponse.data.orders[0].total_price
+        });
+        const allEmails = ordersResponse.data.orders.map((order) => order.email).filter((email2) => email2).filter((email2, index, arr) => arr.indexOf(email2) === index);
+        console.log(`\u{1F4E7} [getOrdersByEmail] All unique emails in orders:`, allEmails);
+      }
+      console.log(`\u{1F50E} [getOrdersByEmail] Filtering orders by email: ${email.toLowerCase()}`);
+      const userOrders = ordersResponse.data.orders.filter((order) => {
+        const orderEmail = order.email?.toLowerCase();
+        const targetEmail = email.toLowerCase();
+        const matches = orderEmail === targetEmail;
+        if (order.email) {
+          console.log(`\u{1F4E8} [getOrdersByEmail] Order ${order.id}: email "${orderEmail}" ${matches ? "\u2705 MATCHES" : "\u274C NO MATCH"} target "${targetEmail}"`);
+        } else {
+          console.log(`\u{1F4ED} [getOrdersByEmail] Order ${order.id}: has no email`);
+        }
+        return order.email && matches;
+      });
+      console.log(`\u{1F3AF} [getOrdersByEmail] Found ${userOrders.length} matching orders for email: ${email}`);
+      if (userOrders.length === 0) {
+        console.log(`\u26A0\uFE0F [getOrdersByEmail] No orders found for email: ${email}`);
+        console.log(`\u{1F4A1} [getOrdersByEmail] Suggestion: Check if the email is correct and if orders exist in Shopify`);
+        return {
+          orders: [],
+          customer: null,
+          total_count: 0,
+          current_page: 1,
+          total_pages: 0,
+          has_next_page: false,
+          has_previous_page: false
+        };
+      }
+      userOrders.forEach((order, index) => {
+        console.log(`\u{1F4CB} [getOrdersByEmail] Order ${index + 1}/${userOrders.length}:`, {
+          id: order.id,
+          name: order.name,
+          email: order.email,
+          created_at: order.created_at,
+          total_price: order.total_price,
+          financial_status: order.financial_status,
+          fulfillment_status: order.fulfillment_status,
+          line_items_count: order.line_items?.length || 0,
+          fulfillments_count: order.fulfillments?.length || 0
+        });
+      });
+      console.log(`\u{1F504} [getOrdersByEmail] Transforming ${userOrders.length} orders...`);
+      const transformedOrders = userOrders.map((order, index) => {
+        console.log(`\u{1F504} [getOrdersByEmail] Transforming order ${index + 1}: ${order.id}`);
+        const fulfillments = order.fulfillments ? order.fulfillments.map((fulfillment) => {
+          console.log(`\u{1F4E6} [getOrdersByEmail] Processing fulfillment ${fulfillment.id}:`, {
+            status: fulfillment.status,
+            tracking_number: fulfillment.tracking_number,
+            tracking_company: fulfillment.tracking_company,
+            tracking_urls: fulfillment.tracking_urls
+          });
+          return {
+            id: fulfillment.id,
+            status: fulfillment.status,
+            trackingNumber: fulfillment.tracking_number || null,
+            trackingUrls: fulfillment.tracking_urls || [],
+            trackingCompany: fulfillment.tracking_company || null,
+            createdAt: fulfillment.created_at,
+            updatedAt: fulfillment.updated_at,
+            lineItems: {
+              edges: fulfillment.line_items ? fulfillment.line_items.map((item) => ({
+                node: {
+                  id: item.id,
+                  quantity: item.quantity
+                }
+              })) : []
+            }
+          };
+        }) : [];
+        console.log(`\u{1F4E6} [getOrdersByEmail] Order ${order.id} has ${fulfillments.length} fulfillments`);
+        const lineItems = {
+          edges: order.line_items ? order.line_items.map((item) => {
+            console.log(`\u{1F6CD}\uFE0F [getOrdersByEmail] Processing line item ${item.id}:`, {
+              title: item.title,
+              quantity: item.quantity,
+              price: item.price,
+              variant_id: item.variant_id,
+              product_id: item.product_id
+            });
+            return {
+              node: {
+                id: item.id,
+                title: item.title,
+                quantity: item.quantity,
+                variant: {
+                  id: item.variant_id,
+                  title: item.variant_title || item.title,
+                  price: item.price,
+                  image: item.variant_image ? {
+                    url: item.variant_image,
+                    altText: item.title
+                  } : void 0
+                },
+                product: {
+                  id: item.product_id,
+                  handle: item.sku || `product-${item.product_id}`,
+                  // Fallback if handle not available
+                  title: item.name || item.title
+                }
+              }
+            };
+          }) : []
+        };
+        console.log(`\u{1F6CD}\uFE0F [getOrdersByEmail] Order ${order.id} has ${lineItems.edges.length} line items`);
+        const transformedOrder = {
+          id: order.id,
+          name: order.name,
+          createdAt: order.created_at,
+          processedAt: order.processed_at,
+          totalPrice: order.total_price,
+          currencyCode: order.currency,
+          financialStatus: order.financial_status,
+          fulfillmentStatus: order.fulfillment_status,
+          fulfillments,
+          lineItems,
+          shippingAddress: order.shipping_address ? {
+            firstName: order.shipping_address.first_name,
+            lastName: order.shipping_address.last_name,
+            address1: order.shipping_address.address1,
+            city: order.shipping_address.city,
+            province: order.shipping_address.province,
+            country: order.shipping_address.country,
+            zip: order.shipping_address.zip
+          } : void 0
+        };
+        console.log(`\u2705 [getOrdersByEmail] Successfully transformed order ${order.id}`);
+        return transformedOrder;
+      });
+      const customerInfo = userOrders.length > 0 ? {
+        id: userOrders[0].customer?.id || "unknown",
+        email,
+        firstName: userOrders[0].billing_address?.first_name || userOrders[0].shipping_address?.first_name || "Customer",
+        lastName: userOrders[0].billing_address?.last_name || userOrders[0].shipping_address?.last_name || ""
+      } : null;
+      console.log(`\u{1F464} [getOrdersByEmail] Customer info extracted:`, customerInfo);
+      const result = {
+        orders: transformedOrders,
+        customer: customerInfo,
+        total_count: transformedOrders.length,
+        current_page: 1,
+        total_pages: 1,
+        has_next_page: false,
+        has_previous_page: false
+      };
+      console.log(`\u{1F389} [getOrdersByEmail] Final result summary:`, {
+        orders_count: result.orders.length,
+        customer_email: result.customer?.email,
+        customer_name: `${result.customer?.firstName} ${result.customer?.lastName}`.trim()
+      });
+      return result;
+    } catch (error) {
+      console.error("\u274C [getOrdersByEmail] Error fetching orders by email:", error);
+      console.error("\u274C [getOrdersByEmail] Error details:", {
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : void 0,
+        email,
+        params
+      });
+      throw error;
+    }
   }
   // Customer methods
   async getCustomers(params = {}) {
@@ -639,6 +997,336 @@ var ShopifyService = class {
   async getDraftOrder(draftOrderId) {
     const response = await this.makeRequest(`/draft_orders/${draftOrderId}.json`);
     return response.data.draft_order;
+  }
+  // Storefront API methods for customer authentication and orders
+  async createStorefrontCustomer(customerData) {
+    const mutation = `
+      mutation customerCreate($input: CustomerCreateInput!) {
+        customerCreate(input: $input) {
+          customer {
+            id
+            email
+            firstName
+            lastName
+            phone
+            createdAt
+          }
+          customerUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
+    const variables = {
+      input: {
+        email: customerData.email,
+        password: customerData.password,
+        firstName: customerData.firstName,
+        lastName: customerData.lastName || "",
+        phone: customerData.phone || null,
+        acceptsMarketing: false
+      }
+    };
+    try {
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const createResult = result.data?.customerCreate;
+      if (createResult?.customerUserErrors && createResult.customerUserErrors.length > 0) {
+        throw new Error(`Customer creation errors: ${JSON.stringify(createResult.customerUserErrors)}`);
+      }
+      return createResult?.customer;
+    } catch (error) {
+      console.error("Error creating Shopify customer:", error);
+      throw error;
+    }
+  }
+  async createCustomerAccessToken(email, password) {
+    const mutation = `
+      mutation customerAccessTokenCreate($input: CustomerAccessTokenCreateInput!) {
+        customerAccessTokenCreate(input: $input) {
+          customerAccessToken {
+            accessToken
+            expiresAt
+          }
+          customerUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
+    const variables = {
+      input: {
+        email,
+        password
+      }
+    };
+    try {
+      console.log("\u{1F511} Creating customer access token for:", email);
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const tokenResult = result.data?.customerAccessTokenCreate;
+      if (tokenResult?.customerUserErrors && tokenResult.customerUserErrors.length > 0) {
+        console.error("\u274C Customer access token errors:", tokenResult.customerUserErrors);
+        throw new Error(`Access token creation errors: ${JSON.stringify(tokenResult.customerUserErrors)}`);
+      }
+      const accessTokenData = tokenResult?.customerAccessToken;
+      if (!accessTokenData) {
+        throw new Error("No access token returned from Shopify");
+      }
+      console.log("\u2705 Customer access token created successfully");
+      return accessTokenData;
+    } catch (error) {
+      console.error("\u274C Error creating customer access token:", error);
+      throw error;
+    }
+  }
+  async getCustomerWithAccessToken(accessToken) {
+    const query = `
+      query getCustomer($customerAccessToken: String!) {
+        customer(customerAccessToken: $customerAccessToken) {
+          id
+          email
+          firstName
+          lastName
+          phone
+          createdAt
+          updatedAt
+          orders(first: 50) {
+            edges {
+              node {
+                id
+                name
+                orderNumber
+                processedAt
+                totalPriceV2 {
+                  amount
+                  currencyCode
+                }
+                financialStatus
+                fulfillmentStatus
+                lineItems(first: 250) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      variant {
+                        id
+                        title
+                        priceV2 {
+                          amount
+                          currencyCode
+                        }
+                        image {
+                          url
+                          altText
+                        }
+                        product {
+                          id
+                          handle
+                          title
+                        }
+                      }
+                    }
+                  }
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  address1
+                  city
+                  province
+                  country
+                  zip
+                }
+                fulfillments {
+                  trackingInfo {
+                    number
+                    url
+                  }
+                  trackingCompany
+                  status
+                  createdAt
+                  updatedAt
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      customerAccessToken: accessToken
+    };
+    try {
+      console.log("\u{1F50D} Fetching customer data with access token");
+      const result = await this.makeStorefrontRequest(query, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const customer = result.data?.customer;
+      if (!customer) {
+        throw new Error("Customer not found or access token invalid");
+      }
+      console.log("\u2705 Customer data fetched successfully");
+      return customer;
+    } catch (error) {
+      console.error("\u274C Error fetching customer:", error);
+      throw error;
+    }
+  }
+  async getCustomerOrdersWithAccessToken(accessToken, options = {}) {
+    const { first = 10, after } = options;
+    const query = `
+      query getCustomerOrders($customerAccessToken: String!, $first: Int!, $after: String) {
+        customer(customerAccessToken: $customerAccessToken) {
+          id
+          email
+          firstName
+          lastName
+          orders(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            totalCount
+            edges {
+              cursor
+              node {
+                id
+                name
+                orderNumber
+                processedAt
+                totalPriceV2 {
+                  amount
+                  currencyCode
+                }
+                financialStatus
+                fulfillmentStatus
+                lineItems(first: 250) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      variant {
+                        id
+                        title
+                        priceV2 {
+                          amount
+                          currencyCode
+                        }
+                        image {
+                          url
+                          altText
+                        }
+                        product {
+                          id
+                          handle
+                          title
+                        }
+                      }
+                    }
+                  }
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  address1
+                  city
+                  province
+                  country
+                  zip
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      customerAccessToken: accessToken,
+      first,
+      ...after && { after }
+    };
+    try {
+      console.log("\u{1F50D} Fetching customer orders with access token", { first, after });
+      const result = await this.makeStorefrontRequest(query, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const customer = result.data?.customer;
+      if (!customer) {
+        throw new Error("Customer not found or access token invalid");
+      }
+      const ordersConnection = customer.orders;
+      const orders = ordersConnection.edges.map((edge) => edge.node);
+      console.log("\u2705 Customer orders fetched successfully", {
+        ordersCount: orders.length,
+        totalCount: ordersConnection.totalCount
+      });
+      return {
+        orders,
+        customer: {
+          id: customer.id,
+          email: customer.email,
+          firstName: customer.firstName,
+          lastName: customer.lastName
+        },
+        totalCount: ordersConnection.totalCount,
+        pageInfo: ordersConnection.pageInfo
+      };
+    } catch (error) {
+      console.error("\u274C Error fetching customer orders:", error);
+      throw error;
+    }
+  }
+  async renewCustomerAccessToken(accessToken) {
+    const mutation = `
+      mutation customerAccessTokenRenew($customerAccessToken: String!) {
+        customerAccessTokenRenew(customerAccessToken: $customerAccessToken) {
+          customerAccessToken {
+            accessToken
+            expiresAt
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const variables = {
+      customerAccessToken: accessToken
+    };
+    try {
+      console.log("\u{1F504} Renewing customer access token");
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const renewResult = result.data?.customerAccessTokenRenew;
+      if (renewResult?.userErrors && renewResult.userErrors.length > 0) {
+        throw new Error(`Token renewal errors: ${JSON.stringify(renewResult.userErrors)}`);
+      }
+      const accessTokenData = renewResult?.customerAccessToken;
+      if (!accessTokenData) {
+        throw new Error("No renewed access token returned from Shopify");
+      }
+      console.log("\u2705 Customer access token renewed successfully");
+      return accessTokenData;
+    } catch (error) {
+      console.error("\u274C Error renewing customer access token:", error);
+      throw error;
+    }
   }
 };
 var shopify_service_default = new ShopifyService();
@@ -1292,6 +1980,65 @@ var getProductByHandle = async (req, res) => {
     );
   }
 };
+var getUserOrders = async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    console.log(`\u{1F510} [getUserOrders] Authenticated user:`, {
+      user_id: req.user._id,
+      email: userEmail,
+      name: req.user.name,
+      role: req.user.role
+    });
+    if (!userEmail) {
+      console.log(`\u274C [getUserOrders] No email found for authenticated user`);
+      return sendResponse(res, 400, "User email not found");
+    }
+    const User = (init_user_model(), __toCommonJS(user_model_exports)).default;
+    const user = await User.findById(req.user._id);
+    if (!user || !user.shopify?.customerAccessToken) {
+      console.log(`\u274C [getUserOrders] No Shopify customer access token found for user`);
+      return sendResponse(res, 400, "Shopify customer access token not found. Please re-login to connect your account.");
+    }
+    const now = /* @__PURE__ */ new Date();
+    const tokenExpired = !user.shopify.customerAccessTokenExpiresAt || user.shopify.customerAccessTokenExpiresAt <= now;
+    if (tokenExpired) {
+      console.log(`\u274C [getUserOrders] Customer access token expired`);
+      return sendResponse(res, 401, "Customer access token expired. Please re-login to refresh your session.");
+    }
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    console.log(`\u{1F4CB} [getUserOrders] Request parameters:`, {
+      page,
+      limit,
+      userEmail,
+      hasToken: !!user.shopify.customerAccessToken,
+      tokenExpires: user.shopify.customerAccessTokenExpiresAt
+    });
+    const ordersData = await shopify_service_default.getCustomerOrdersWithAccessToken(
+      user.shopify.customerAccessToken,
+      {
+        first: limit
+        // Note: Storefront API uses cursor-based pagination, not page-based
+        // For simplicity, we'll fetch orders without cursor pagination for now
+      }
+    );
+    console.log(`\u{1F4E6} [getUserOrders] Orders data retrieved:`, {
+      orders_count: ordersData.orders.length,
+      customer: ordersData.customer,
+      total_count: ordersData.totalCount
+    });
+    return sendResponse(res, 200, "User orders retrieved successfully", ordersData);
+  } catch (error) {
+    console.error(`\u274C [getUserOrders] Error:`, error);
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch user orders",
+      void 0,
+      error.message
+    );
+  }
+};
 
 // src/controllers/webhook.controller.ts
 var orderCreated = async (req, res) => {
@@ -1359,90 +2106,9 @@ var validateShopifyWebhook = (req, res, next) => {
     res.status(500).json({ error: "Failed to validate webhook" });
   }
 };
-var EUserRole = /* @__PURE__ */ ((EUserRole3) => {
-  EUserRole3["client"] = "client";
-  EUserRole3["admin"] = "admin";
-  EUserRole3["superAdmin"] = "super_admin";
-  return EUserRole3;
-})(EUserRole || {});
-var UserSchema = new mongoose6.Schema({
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-    trim: true
-  },
-  password: {
-    type: String,
-    required: true,
-    minlength: 6
-  },
-  address: {
-    street: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    city: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    state: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    zip: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    country: {
-      type: String,
-      trim: true,
-      required: false
-    }
-  },
-  role: {
-    type: String,
-    enum: Object.values(EUserRole),
-    default: "client" /* client */
-  },
-  name: {
-    type: String,
-    required: true
-  },
-  phone: {
-    type: String,
-    trim: true
-  },
-  verified: {
-    type: Boolean,
-    default: false
-  },
-  wishlisted: {
-    type: [String],
-    default: []
-  }
-}, { timestamps: true });
-UserSchema.pre("save", async function(next) {
-  if (!this.isModified("password")) return next();
-  try {
-    const salt = await bcrypt__default.default.genSalt(10);
-    this.password = await bcrypt__default.default.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-UserSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt__default.default.compare(candidatePassword, this.password);
-};
-var user_model_default = mongoose6__default.default.model("User", UserSchema);
 
 // src/middleware/auth.middleware.ts
+init_user_model();
 var validateUserAccess = async (req, res, next) => {
   try {
     let token = req.cookies.token || req.header("Authorization")?.replace("Bearer ", "");
@@ -1553,6 +2219,7 @@ shopifyRouter.get(
 );
 shopifyRouter.get("/orders", getOrders);
 shopifyRouter.get("/orders/:id", getOrder);
+shopifyRouter.get("/orders/user/my-orders", validateUserAccess, getUserOrders);
 shopifyRouter.post(
   "/orders",
   createOrder
@@ -1676,6 +2343,9 @@ shopifyRouter.get(
   generateSalesReport
 );
 var shopify_routes_default = shopifyRouter;
+
+// src/controllers/auth.controller.ts
+init_user_model();
 var sendTokenResponse = (user, statusCode, res, req) => {
   const userAgent = req.headers["user-agent"] || "unknown";
   const ipAddress = req.ip || req.connection.remoteAddress || "unknown";
@@ -1737,14 +2407,47 @@ var register = async (req, res) => {
         return;
       }
     }
+    const nameParts = name.trim().split(" ");
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(" ") || "";
+    console.log("\u{1F6CD}\uFE0F Creating Shopify customer for:", email);
+    let shopifyCustomer;
+    let customerAccessToken;
+    try {
+      shopifyCustomer = await shopify_service_default.createStorefrontCustomer({
+        email,
+        password,
+        firstName,
+        lastName,
+        phone
+      });
+      console.log("\u2705 Shopify customer created:", shopifyCustomer?.id);
+      const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
+      customerAccessToken = tokenData;
+      console.log("\u2705 Customer access token obtained");
+    } catch (shopifyError) {
+      console.error("\u274C Shopify customer creation failed:", shopifyError.message);
+      res.status(400).json({
+        message: "Failed to create Shopify customer",
+        error: shopifyError.message
+      });
+      return;
+    }
     const user = await user_model_default.create({
       name,
       email,
       password,
-      ...phone ? { phone } : {}
+      ...phone ? { phone } : {},
+      shopify: {
+        customerId: shopifyCustomer?.id,
+        customerAccessToken: customerAccessToken?.accessToken,
+        customerAccessTokenExpiresAt: new Date(customerAccessToken?.expiresAt)
+      }
     });
+    console.log("\u2705 User created with Shopify integration");
     sendTokenResponse(user, 201, res, req);
   } catch (error) {
+    console.error("\u274C Registration failed:", error);
     res.status(500).json({ message: "Registration failed", error: error.message });
   }
 };
@@ -1766,11 +2469,34 @@ var login = async (req, res) => {
         res.status(401).json({ message: "Invalid credentials" });
         return;
       }
+      console.log("\u{1F510} User authenticated, getting Shopify customer access token");
+      let customerAccessToken = user.shopify?.customerAccessToken;
+      let tokenExpiresAt = user.shopify?.customerAccessTokenExpiresAt;
+      const now = /* @__PURE__ */ new Date();
+      const tokenExpired = !tokenExpiresAt || tokenExpiresAt <= now;
+      if (!customerAccessToken || tokenExpired) {
+        console.log("\u{1F504} Creating new customer access token");
+        try {
+          const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
+          customerAccessToken = tokenData.accessToken;
+          tokenExpiresAt = new Date(tokenData.expiresAt);
+          await user_model_default.findByIdAndUpdate(user._id, {
+            "shopify.customerAccessToken": customerAccessToken,
+            "shopify.customerAccessTokenExpiresAt": tokenExpiresAt
+          });
+          console.log("\u2705 New customer access token created and saved");
+        } catch (shopifyError) {
+          console.error("\u274C Failed to get Shopify customer access token:", shopifyError);
+        }
+      } else {
+        console.log("\u2705 Using existing valid customer access token");
+      }
       sendTokenResponse(user, 200, res, req);
     } catch (error) {
       res.status(401).json({ message: "Invalid credentials" });
     }
   } catch (error) {
+    console.error("\u274C Login failed:", error);
     res.status(500).json({ message: "Login failed", error: error.message });
   }
 };
@@ -3783,6 +4509,7 @@ inquiryRouter.delete("/:id", deleteInquiry);
 var inquiry_routes_default = inquiryRouter;
 
 // src/controllers/user.controller.ts
+init_user_model();
 var getWishlistWithDetails = async (wishlisted) => {
   const wishlistItems = [];
   for (const productId of wishlisted) {

@@ -3,6 +3,7 @@ export const shopifyConfig = {
   apiSecret: process.env.SHOPIFY_API_SECRET || '',
   storeUrl: process.env.SHOPIFY_STORE_URL || '',
   accessToken: process.env.SHOPIFY_ACCESS_TOKEN || '',
+  storefrontToken: process.env.SHOPIFY_STOREFRONT_TOKEN || '',
   apiVersion: '2023-07', // Using a stable API version
   scopes: [
     'read_products', 
@@ -41,11 +42,15 @@ export const shopifyConfig = {
 
 // Validate Shopify configuration
 export const validateShopifyConfig = (): boolean => {
-  const { apiKey, apiSecret, storeUrl, accessToken } = shopifyConfig;
+  const { apiKey, apiSecret, storeUrl, accessToken, storefrontToken } = shopifyConfig;
   
   if (!apiKey || !apiSecret || !storeUrl || !accessToken) {
     console.error('❌ Missing Shopify configuration. Please check your .env file.');
     return false;
+  }
+  
+  if (!storefrontToken) {
+    console.warn('⚠️ Missing Shopify Storefront API token. Customer order features may not work.');
   }
   
   // Check if store URL is formatted correctly

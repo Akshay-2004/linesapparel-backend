@@ -25,6 +25,11 @@ export interface IUser extends Document {
     updatedAt: Date;
     comparePassword(candidatePassword: string): Promise<boolean>;
     wishlisted: string[];
+    shopify: {
+        customerId?: string;
+        customerAccessToken?: string;
+        customerAccessTokenExpiresAt?: Date;
+    };
 }
 
 const UserSchema = new Schema<IUser>({
@@ -87,6 +92,20 @@ const UserSchema = new Schema<IUser>({
     wishlisted: {
         type: [String],
         default: []
+    },
+    shopify: {
+        customerId: {
+            type: String,
+            required: false
+        },
+        customerAccessToken: {
+            type: String,
+            required: false
+        },
+        customerAccessTokenExpiresAt: {
+            type: Date,
+            required: false
+        }
     }
 }, { timestamps: true });
 
