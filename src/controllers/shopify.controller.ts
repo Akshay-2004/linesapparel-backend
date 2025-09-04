@@ -731,6 +731,165 @@ export const getProductByHandle = async (req: Request, res: Response) => {
   }
 };
 
+export const searchProducts = async (req: Request, res: Response) => {
+  try {
+    const {
+      query = '',
+      limit = 20,
+      after,
+      sortKey = 'RELEVANCE',
+      reverse = false,
+      productType,
+      vendor,
+      available,
+      priceMin,
+      priceMax
+    } = req.query;
+
+    console.log('🔍 Product search request:', {
+      query,
+      limit: parseInt(limit as string),
+      sortKey,
+      filters: { productType, vendor, available, priceMin, priceMax }
+    });
+
+    const searchOptions = {
+      query: query as string,
+      first: parseInt(limit as string),
+      ...(after && { after: after as string }),
+      sortKey: sortKey as any,
+      reverse: reverse === 'true',
+      ...(productType && { productType: productType as string }),
+      ...(vendor && { vendor: vendor as string }),
+      ...(available !== undefined && { available: available === 'true' }),
+      ...(priceMin && { priceMin: parseFloat(priceMin as string) }),
+      ...(priceMax && { priceMax: parseFloat(priceMax as string) })
+    };
+
+    const searchResults = await shopifyService.searchProductsStorefront(searchOptions);
+
+    return sendResponse(res, 200, "Products search completed successfully", searchResults);
+  } catch (error: any) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to search products",
+      undefined,
+      error.message
+    );
+  }
+};
+
+export const getCollectionProductsFiltered = async (req: Request, res: Response) => {
+  try {
+    const { handle } = req.params;
+    const {
+      limit = 20,
+      after,
+      sortKey = 'COLLECTION_DEFAULT',
+      reverse = false,
+      available,
+      priceMin,
+      priceMax,
+      productType,
+      vendor
+    } = req.query;
+
+    console.log('🔍 Collection products filter request:', {
+      handle,
+      limit: parseInt(limit as string),
+      sortKey,
+      filters: { available, priceMin, priceMax, productType, vendor }
+    });
+
+    const filterOptions = {
+      first: parseInt(limit as string),
+      ...(after && { after: after as string }),
+      sortKey: sortKey as any,
+      reverse: reverse === 'true',
+      filters: {
+        ...(available !== undefined && { available: available === 'true' }),
+        ...(priceMin && { priceMin: parseFloat(priceMin as string) }),
+        ...(priceMax && { priceMax: parseFloat(priceMax as string) }),
+        ...(productType && { productType: productType as string }),
+        ...(vendor && { vendor: vendor as string })
+      }
+    };
+
+    const collectionData = await shopifyService.getCollectionProductsStorefront(handle, filterOptions);
+
+    return sendResponse(res, 200, "Collection products retrieved successfully", collectionData);
+  } catch (error: any) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch filtered collection products",
+      undefined,
+      error.message
+    );
+  }
+};
+
+export const getProductRecommendations = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { intent = 'RELATED' } = req.query;
+
+    console.log('🔍 Product recommendations request:', { productId: id, intent });
+
+    const recommendations = await shopifyService.getProductRecommendations(
+      id,
+      intent as 'RELATED' | 'COMPLEMENTARY'
+    );
+
+    return sendResponse(res, 200, "Product recommendations retrieved successfully", recommendations);
+  } catch (error: any) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch product recommendations",
+      undefined,
+      error.message
+    );
+  }
+};
+
+export const getProductFilters = async (req: Request, res: Response) => {
+  try {
+    const { collection } = req.query;
+
+    console.log('🔍 Getting product filters for collection:', collection);
+
+    let filterData;
+    
+    if (collection) {
+      // Get filters specific to a collection
+      const collectionData = await shopifyService.getCollectionProductsStorefront(
+        collection as string,
+        { first: 250 } // Get more products to extract comprehensive filter options
+      );
+      filterData = collectionData.filters;
+    } else {
+      // Get general product filters
+      const searchResults = await shopifyService.searchProductsStorefront({
+        query: '',
+        first: 250
+      });
+      filterData = searchResults.filters;
+    }
+
+    return sendResponse(res, 200, "Product filters retrieved successfully", filterData);
+  } catch (error: any) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch product filters",
+      undefined,
+      error.message
+    );
+  }
+};
+
 export const getUserOrders = async (req: any, res: Response) => {
   try {
     // Get user email from the authenticated user

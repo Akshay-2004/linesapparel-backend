@@ -1369,6 +1369,502 @@ class ShopifyService {
       throw error;
     }
   }
+
+  // Enhanced Storefront API methods for product search and filtering
+  async searchProductsStorefront(options: {
+    query?: string;
+    first?: number;
+    after?: string;
+    sortKey?: 'RELEVANCE' | 'PRICE' | 'TITLE' | 'CREATED_AT' | 'UPDATED_AT' | 'BEST_SELLING' | 'PRODUCT_TYPE' | 'VENDOR';
+    reverse?: boolean;
+    productType?: string;
+    vendor?: string;
+    available?: boolean;
+    priceMin?: number;
+    priceMax?: number;
+  } = {}): Promise<{
+    products: any[];
+    totalCount: number;
+    pageInfo: any;
+    filters: {
+      availableVendors: string[];
+      availableProductTypes: string[];
+      priceRange: { min: number; max: number };
+    };
+  }> {
+    const {
+      query = '',
+      first = 20,
+      after,
+      sortKey = 'RELEVANCE',
+      reverse = false,
+      productType,
+      vendor,
+      available,
+      priceMin,
+      priceMax
+    } = options;
+
+    // Build the search query with filters
+    let searchQuery = query;
+    const filters: string[] = [];
+    
+    if (productType) {
+      filters.push(`product_type:${productType}`);
+    }
+    if (vendor) {
+      filters.push(`vendor:${vendor}`);
+    }
+    if (available !== undefined) {
+      filters.push(`available:${available}`);
+    }
+    if (priceMin !== undefined || priceMax !== undefined) {
+      const priceFilter = [];
+      if (priceMin !== undefined) priceFilter.push(`>=${priceMin}`);
+      if (priceMax !== undefined) priceFilter.push(`<=${priceMax}`);
+      filters.push(`variants.price:${priceFilter.join(' AND ')}`);
+    }
+
+    if (filters.length > 0) {
+      searchQuery = searchQuery ? `${searchQuery} ${filters.join(' ')}` : filters.join(' ');
+    }
+
+    const graphqlQuery = `
+      query searchProducts($query: String!, $first: Int!, $after: String, $sortKey: ProductSortKeys!, $reverse: Boolean!) {
+        products(query: $query, first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+          }
+          edges {
+            cursor
+            node {
+              id
+              handle
+              title
+              description
+              productType
+              vendor
+              createdAt
+              updatedAt
+              tags
+              availableForSale
+              totalInventory
+              images(first: 5) {
+                edges {
+                  node {
+                    id
+                    url
+                    altText
+                    width
+                    height
+                  }
+                }
+              }
+              variants(first: 250) {
+                edges {
+                  node {
+                    id
+                    title
+                    priceV2 {
+                      amount
+                      currencyCode
+                    }
+                    compareAtPriceV2 {
+                      amount
+                      currencyCode
+                    }
+                    availableForSale
+                    quantityAvailable
+                    selectedOptions {
+                      name
+                      value
+                    }
+                    image {
+                      id
+                      url
+                      altText
+                    }
+                  }
+                }
+              }
+              options {
+                id
+                name
+                values
+              }
+              collections(first: 5) {
+                edges {
+                  node {
+                    id
+                    handle
+                    title
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      query: searchQuery,
+      first,
+      sortKey,
+      reverse,
+      ...(after && { after })
+    };
+
+    try {
+      console.log('🔍 Searching products with query:', searchQuery);
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const productsConnection = result.data?.products;
+      if (!productsConnection) {
+        throw new Error('No products data returned from search');
+      }
+
+      const products = productsConnection.edges.map((edge: any) => edge.node);
+      
+      // Extract filter options from the results
+      const vendorSet = new Set<string>();
+      const productTypeSet = new Set<string>();
+      let minPrice = Infinity;
+      let maxPrice = 0;
+
+      products.forEach((product: any) => {
+        if (product.vendor) vendorSet.add(product.vendor);
+        if (product.productType) productTypeSet.add(product.productType);
+        
+        product.variants.edges.forEach((variantEdge: any) => {
+          const price = parseFloat(variantEdge.node.priceV2.amount);
+          minPrice = Math.min(minPrice, price);
+          maxPrice = Math.max(maxPrice, price);
+        });
+      });
+
+      console.log('✅ Product search completed', { 
+        productsCount: products.length,
+        vendors: Array.from(vendorSet),
+        productTypes: Array.from(productTypeSet)
+      });
+      
+      return {
+        products,
+        totalCount: products.length, // Note: Storefront API doesn't provide total count
+        pageInfo: productsConnection.pageInfo,
+        filters: {
+          availableVendors: Array.from(vendorSet),
+          availableProductTypes: Array.from(productTypeSet),
+          priceRange: {
+            min: minPrice === Infinity ? 0 : minPrice,
+            max: maxPrice
+          }
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error searching products:', error);
+      throw error;
+    }
+  }
+
+  async getCollectionProductsStorefront(
+    collectionHandle: string,
+    options: {
+      first?: number;
+      after?: string;
+      sortKey?: 'COLLECTION_DEFAULT' | 'PRICE' | 'TITLE' | 'CREATED' | 'UPDATED' | 'BEST_SELLING' | 'ID' | 'MANUAL';
+      reverse?: boolean;
+      filters?: {
+        available?: boolean;
+        priceMin?: number;
+        priceMax?: number;
+        productType?: string;
+        vendor?: string;
+      };
+    } = {}
+  ): Promise<{
+    collection: any;
+    products: any[];
+    pageInfo: any;
+    filters: {
+      availableVendors: string[];
+      availableProductTypes: string[];
+      priceRange: { min: number; max: number };
+    };
+  }> {
+    const {
+      first = 20,
+      after,
+      sortKey = 'COLLECTION_DEFAULT',
+      reverse = false,
+      filters = {}
+    } = options;
+
+    // Note: Storefront API doesn't support filtering products within collections
+    // We'll fetch all products and filter client-side, or use a larger limit
+    const graphqlQuery = `
+      query getCollectionProducts($handle: String!, $first: Int!, $after: String, $sortKey: ProductCollectionSortKeys!, $reverse: Boolean!) {
+        collection(handle: $handle) {
+          id
+          handle
+          title
+          description
+          image {
+            id
+            url
+            altText
+          }
+          products(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            edges {
+              cursor
+              node {
+                id
+                handle
+                title
+                description
+                productType
+                vendor
+                createdAt
+                updatedAt
+                tags
+                availableForSale
+                totalInventory
+                images(first: 5) {
+                  edges {
+                    node {
+                      id
+                      url
+                      altText
+                      width
+                      height
+                    }
+                  }
+                }
+                variants(first: 250) {
+                  edges {
+                    node {
+                      id
+                      title
+                      priceV2 {
+                        amount
+                        currencyCode
+                      }
+                      compareAtPriceV2 {
+                        amount
+                        currencyCode
+                      }
+                      availableForSale
+                      quantityAvailable
+                      selectedOptions {
+                        name
+                        value
+                      }
+                      image {
+                        id
+                        url
+                        altText
+                      }
+                    }
+                  }
+                }
+                options {
+                  id
+                  name
+                  values
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      handle: collectionHandle,
+      first,
+      sortKey,
+      reverse,
+      ...(after && { after })
+    };
+
+    try {
+      console.log('🔍 Fetching collection products:', { collectionHandle, first, sortKey });
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const collection = result.data?.collection;
+      if (!collection) {
+        throw new Error('Collection not found');
+      }
+
+      let products = collection.products.edges.map((edge: any) => edge.node);
+      
+      // Apply client-side filtering since Storefront API doesn't support product filtering within collections
+      if (filters.available !== undefined) {
+        products = products.filter((product: any) => product.availableForSale === filters.available);
+      }
+      
+      if (filters.productType) {
+        products = products.filter((product: any) => 
+          product.productType?.toLowerCase().includes(filters.productType!.toLowerCase())
+        );
+      }
+      
+      if (filters.vendor) {
+        products = products.filter((product: any) => 
+          product.vendor?.toLowerCase().includes(filters.vendor!.toLowerCase())
+        );
+      }
+      
+      if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
+        products = products.filter((product: any) => {
+          const price = parseFloat(product.variants.edges[0]?.node.priceV2.amount || '0');
+          const meetsMin = filters.priceMin === undefined || price >= filters.priceMin;
+          const meetsMax = filters.priceMax === undefined || price <= filters.priceMax;
+          return meetsMin && meetsMax;
+        });
+      }
+
+      // Extract filter options from ALL products (before filtering)
+      const allProducts = collection.products.edges.map((edge: any) => edge.node);
+      const vendorSet = new Set<string>();
+      const productTypeSet = new Set<string>();
+      let minPrice = Infinity;
+      let maxPrice = 0;
+
+      allProducts.forEach((product: any) => {
+        if (product.vendor) vendorSet.add(product.vendor);
+        if (product.productType) productTypeSet.add(product.productType);
+        
+        product.variants.edges.forEach((variantEdge: any) => {
+          const price = parseFloat(variantEdge.node.priceV2.amount);
+          minPrice = Math.min(minPrice, price);
+          maxPrice = Math.max(maxPrice, price);
+        });
+      });
+
+      console.log('✅ Collection products fetched successfully', { 
+        collection: collection.title,
+        totalProducts: allProducts.length,
+        filteredProducts: products.length,
+        vendors: Array.from(vendorSet),
+        productTypes: Array.from(productTypeSet)
+      });
+      
+      return {
+        collection: {
+          id: collection.id,
+          handle: collection.handle,
+          title: collection.title,
+          description: collection.description,
+          image: collection.image?.url
+        },
+        products,
+        pageInfo: {
+          ...collection.products.pageInfo,
+          // Note: pageInfo might not be accurate after client-side filtering
+        },
+        filters: {
+          availableVendors: Array.from(vendorSet),
+          availableProductTypes: Array.from(productTypeSet),
+          priceRange: {
+            min: minPrice === Infinity ? 0 : minPrice,
+            max: maxPrice
+          }
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error fetching collection products:', error);
+      throw error;
+    }
+  }
+
+  async getProductRecommendations(
+    productId: string,
+    intent: 'RELATED' | 'COMPLEMENTARY' = 'RELATED'
+  ): Promise<any[]> {
+    const graphqlQuery = `
+      query getProductRecommendations($productId: ID!, $intent: ProductRecommendationIntent!) {
+        productRecommendations(productId: $productId, intent: $intent) {
+          id
+          handle
+          title
+          description
+          productType
+          vendor
+          availableForSale
+          images(first: 3) {
+            edges {
+              node {
+                id
+                url
+                altText
+              }
+            }
+          }
+          variants(first: 5) {
+            edges {
+              node {
+                id
+                title
+                priceV2 {
+                  amount
+                  currencyCode
+                }
+                compareAtPriceV2 {
+                  amount
+                  currencyCode
+                }
+                availableForSale
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      productId,
+      intent
+    };
+
+    try {
+      console.log('🔍 Fetching product recommendations');
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const recommendations = result.data?.productRecommendations || [];
+      
+      console.log('✅ Product recommendations fetched successfully', { 
+        count: recommendations.length
+      });
+      
+      return recommendations;
+    } catch (error) {
+      console.error('❌ Error fetching product recommendations:', error);
+      throw error;
+    }
+  }
 }
 
 export default new ShopifyService();

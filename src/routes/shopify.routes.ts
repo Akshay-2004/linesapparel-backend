@@ -12,7 +12,10 @@ shopifyRouter.get("/auth/status", shopifyController.checkAuthStatus);
 
 // Products
 shopifyRouter.get("/products", shopifyController.getProducts);
+shopifyRouter.get("/products/search", shopifyController.searchProducts);
+shopifyRouter.get("/products/filters", shopifyController.getProductFilters);
 shopifyRouter.get("/products/:id", shopifyController.getProduct);
+shopifyRouter.get("/products/:id/recommendations", shopifyController.getProductRecommendations);
 shopifyRouter.get(
   "/products/handle/:handle",
   shopifyController.getProductByHandle
@@ -100,6 +103,10 @@ shopifyRouter.get("/collections/:id", shopifyController.getCollection);
 shopifyRouter.get(
   "/collections/handle/:handle",
   shopifyController.getCollectionByHandle
+);
+shopifyRouter.get(
+  "/collections/handle/:handle/products",
+  shopifyController.getCollectionProductsFiltered
 );
 shopifyRouter.get(
   "/collections/:id/products",
