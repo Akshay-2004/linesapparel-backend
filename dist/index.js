@@ -1,6 +1,6 @@
 'use strict';
 
-var mongoose6 = require('mongoose');
+var mongoose7 = require('mongoose');
 var bcrypt = require('bcrypt');
 var dotenv = require('dotenv');
 var express7 = require('express');
@@ -8,6 +8,7 @@ var cookieParser = require('cookie-parser');
 var cors = require('cors');
 var crypto = require('crypto');
 var jwt = require('jsonwebtoken');
+var nodemailer = require('nodemailer');
 var cloudinary = require('cloudinary');
 var multerStorageCloudinary = require('multer-storage-cloudinary');
 var multer = require('multer');
@@ -17,7 +18,7 @@ var uuid = require('uuid');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
-var mongoose6__default = /*#__PURE__*/_interopDefault(mongoose6);
+var mongoose7__default = /*#__PURE__*/_interopDefault(mongoose7);
 var bcrypt__default = /*#__PURE__*/_interopDefault(bcrypt);
 var dotenv__default = /*#__PURE__*/_interopDefault(dotenv);
 var express7__default = /*#__PURE__*/_interopDefault(express7);
@@ -25,6 +26,7 @@ var cookieParser__default = /*#__PURE__*/_interopDefault(cookieParser);
 var cors__default = /*#__PURE__*/_interopDefault(cors);
 var crypto__default = /*#__PURE__*/_interopDefault(crypto);
 var jwt__default = /*#__PURE__*/_interopDefault(jwt);
+var nodemailer__default = /*#__PURE__*/_interopDefault(nodemailer);
 var multer__default = /*#__PURE__*/_interopDefault(multer);
 var fs__default = /*#__PURE__*/_interopDefault(fs);
 var axios__default = /*#__PURE__*/_interopDefault(axios);
@@ -65,7 +67,7 @@ var init_user_model = __esm({
       EUserRole3["superAdmin"] = "super_admin";
       return EUserRole3;
     })(EUserRole || {});
-    UserSchema = new mongoose6.Schema({
+    UserSchema = new mongoose7.Schema({
       email: {
         type: String,
         required: true,
@@ -154,7 +156,7 @@ var init_user_model = __esm({
     UserSchema.methods.comparePassword = async function(candidatePassword) {
       return await bcrypt__default.default.compare(candidatePassword, this.password);
     };
-    user_model_default = mongoose6__default.default.model("User", UserSchema);
+    user_model_default = mongoose7__default.default.model("User", UserSchema);
   }
 });
 
@@ -2898,6 +2900,628 @@ var shopify_routes_default = shopifyRouter;
 
 // src/controllers/auth.controller.ts
 init_user_model();
+var OtpSchema = new mongoose7.Schema({
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  otp: {
+    type: String,
+    required: true,
+    length: 6
+  },
+  expiresAt: {
+    type: Date,
+    required: true,
+    default: () => new Date(Date.now() + 10 * 60 * 1e3)
+    // 10 minutes from now
+  }
+}, {
+  timestamps: true
+});
+OtpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+OtpSchema.statics.generateOTP = function() {
+  return Math.floor(1e5 + Math.random() * 9e5).toString();
+};
+OtpSchema.methods.isExpired = function() {
+  return /* @__PURE__ */ new Date() > this.expiresAt;
+};
+var otp_model_default = mongoose7__default.default.model("Otp", OtpSchema);
+var createTransporter = () => {
+  return nodemailer__default.default.createTransport({
+    host: process.env.SMTP_HOST || "email-smtp.eu-north-1.amazonaws.com",
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: false,
+    // true for 465, false for other ports like 587
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    },
+    tls: {
+      rejectUnauthorized: false
+      // For development, set to true in production
+    }
+  });
+};
+var emailTemplates = {
+  ["EMAIL_VERIFICATION_OTP" /* EMAIL_VERIFICATION_OTP */]: (data) => ({
+    subject: "Verify Your Email Address",
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .otp-code { background: #e7f3ff; border: 2px dashed #007bff; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
+            .otp-number { font-size: 32px; font-weight: bold; color: #007bff; letter-spacing: 5px; }
+            .button { display: inline-block; background: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F510} Email Verification</h1>
+            <p>Please verify your email address to continue</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for signing up with ${data.companyName || "Lines Apparel"}! To complete your registration, please use the verification code below:</p>
+            
+            <div class="otp-code">
+                <p>Your verification code is:</p>
+                <div class="otp-number">${data.otp}</div>
+                <p><small>This code will expire in ${data.expiryMinutes} minutes</small></p>
+            </div>
+            
+            <p>If you didn't request this verification, please ignore this email.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Email Verification
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for signing up with ${data.companyName || "Lines Apparel"}! To complete your registration, please use the verification code below:
+    
+    Your verification code: ${data.otp}
+    
+    This code will expire in ${data.expiryMinutes} minutes.
+    
+    If you didn't request this verification, please ignore this email.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["WELCOME_EMAIL" /* WELCOME_EMAIL */]: (data) => ({
+    subject: `Welcome to ${data.companyName || "Lines Apparel"}!`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .button { display: inline-block; background: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F389} Welcome to ${data.companyName || "Lines Apparel"}!</h1>
+            <p>We're excited to have you on board</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Welcome to ${data.companyName || "Lines Apparel"}! Your email has been successfully verified and your account is now active.</p>
+            
+            <p>Here's what you can do next:</p>
+            <ul>
+                <li>Browse our latest collection</li>
+                <li>Set up your profile and preferences</li>
+                <li>Start shopping and enjoy exclusive member benefits</li>
+            </ul>
+            
+            <div style="text-align: center;">
+                <a href="${data.websiteUrl || "https://linesapparel.ca"}" class="button">Start Shopping</a>
+            </div>
+            
+            <p>If you have any questions, feel free to reach out to our support team.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Welcome to ${data.companyName || "Lines Apparel"}!
+    
+    Hello ${data.recipientName || "there"},
+    
+    Welcome to ${data.companyName || "Lines Apparel"}! Your email has been successfully verified and your account is now active.
+    
+    Here's what you can do next:
+    - Browse our latest collection
+    - Set up your profile and preferences
+    - Start shopping and enjoy exclusive member benefits
+    
+    Visit us at: ${data.websiteUrl || "https://linesapparel.ca"}
+    
+    If you have any questions, feel free to reach out to our support team.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["FORGOT_PASSWORD_OTP" /* FORGOT_PASSWORD_OTP */]: (data) => ({
+    subject: "Reset Your Password",
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Reset</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .otp-code { background: #fff3cd; border: 2px dashed #ffc107; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
+            .otp-number { font-size: 32px; font-weight: bold; color: #dc3545; letter-spacing: 5px; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F511} Password Reset</h1>
+            <p>Reset your password securely</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>We received a request to reset your password for your ${data.companyName || "Lines Apparel"} account.</p>
+            
+            <div class="otp-code">
+                <p>Your password reset code is:</p>
+                <div class="otp-number">${data.otp}</div>
+                <p><small>This code will expire in ${data.expiryMinutes} minutes</small></p>
+            </div>
+            
+            <p><strong>Important:</strong> If you didn't request this password reset, please ignore this email and ensure your account is secure.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Password Reset
+    
+    Hello ${data.recipientName || "there"},
+    
+    We received a request to reset your password for your ${data.companyName || "Lines Apparel"} account.
+    
+    Your password reset code: ${data.otp}
+    
+    This code will expire in ${data.expiryMinutes} minutes.
+    
+    Important: If you didn't request this password reset, please ignore this email and ensure your account is secure.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["PASSWORD_RESET_SUCCESS" /* PASSWORD_RESET_SUCCESS */]: (data) => ({
+    subject: "Password Reset Successful",
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Reset Successful</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u2705 Password Reset Successful</h1>
+            <p>Your password has been updated</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Your password for ${data.companyName || "Lines Apparel"} has been successfully reset.</p>
+            
+            <p>You can now log in with your new password. If you didn't make this change, please contact our support team immediately.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Password Reset Successful
+    
+    Hello ${data.recipientName || "there"},
+    
+    Your password for ${data.companyName || "Lines Apparel"} has been successfully reset.
+    
+    You can now log in with your new password. If you didn't make this change, please contact our support team immediately.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["ORDER_CONFIRMATION" /* ORDER_CONFIRMATION */]: (data) => ({
+    subject: `Order Confirmation - ${data.orderNumber}`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Order Confirmation</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #6f42c1 0%, #007bff 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .order-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #007bff; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F6CD}\uFE0F Order Confirmed!</h1>
+            <p>Thank you for your purchase</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for your order! We've received your order and are processing it now.</p>
+            
+            <div class="order-details">
+                <h3>Order Details</h3>
+                <p><strong>Order Number:</strong> ${data.orderNumber}</p>
+                <p><strong>Order Date:</strong> ${data.orderDate}</p>
+                <p><strong>Total Amount:</strong> ${data.orderTotal}</p>
+            </div>
+            
+            <p>You'll receive another email when your order ships with tracking information.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Order Confirmed!
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for your order! We've received your order and are processing it now.
+    
+    Order Details:
+    Order Number: ${data.orderNumber}
+    Order Date: ${data.orderDate}
+    Total Amount: ${data.orderTotal}
+    
+    You'll receive another email when your order ships with tracking information.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["ORDER_SHIPPED" /* ORDER_SHIPPED */]: (data) => ({
+    subject: `Your Order ${data.orderNumber} Has Shipped!`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Order Shipped</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .shipping-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F4E6} Your Order Has Shipped!</h1>
+            <p>Your package is on its way</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Great news! Your order has been shipped and is on its way to you.</p>
+            
+            <div class="shipping-details">
+                <h3>Shipping Details</h3>
+                <p><strong>Order Number:</strong> ${data.orderNumber}</p>
+                ${data.trackingNumber ? `<p><strong>Tracking Number:</strong> ${data.trackingNumber}</p>` : ""}
+                ${data.estimatedDelivery ? `<p><strong>Estimated Delivery:</strong> ${data.estimatedDelivery}</p>` : ""}
+            </div>
+            
+            <p>You can track your package using the tracking number provided above.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Your Order Has Shipped!
+    
+    Hello ${data.recipientName || "there"},
+    
+    Great news! Your order has been shipped and is on its way to you.
+    
+    Shipping Details:
+    Order Number: ${data.orderNumber}
+    ${data.trackingNumber ? `Tracking Number: ${data.trackingNumber}` : ""}
+    ${data.estimatedDelivery ? `Estimated Delivery: ${data.estimatedDelivery}` : ""}
+    
+    You can track your package using the tracking number provided above.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["INQUIRY_RECEIVED" /* INQUIRY_RECEIVED */]: (data) => ({
+    subject: `We've Received Your Inquiry - ${data.inquiryId}`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Inquiry Received</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #17a2b8 0%, #6f42c1 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .inquiry-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #17a2b8; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F4AC} Inquiry Received</h1>
+            <p>We'll get back to you soon</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for contacting ${data.companyName || "Lines Apparel"}! We've received your inquiry and will respond as soon as possible.</p>
+            
+            <div class="inquiry-details">
+                <h3>Your Inquiry</h3>
+                <p><strong>Inquiry ID:</strong> ${data.inquiryId}</p>
+                <p><strong>Subject:</strong> ${data.inquirySubject}</p>
+                ${data.inquiryMessage ? `<p><strong>Message:</strong> ${data.inquiryMessage}</p>` : ""}
+            </div>
+            
+            <p>We typically respond within 24 hours during business days. For urgent matters, please call our support line.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Inquiry Received
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for contacting ${data.companyName || "Lines Apparel"}! We've received your inquiry and will respond as soon as possible.
+    
+    Your Inquiry:
+    Inquiry ID: ${data.inquiryId}
+    Subject: ${data.inquirySubject}
+    ${data.inquiryMessage ? `Message: ${data.inquiryMessage}` : ""}
+    
+    We typically respond within 24 hours during business days. For urgent matters, please call our support line.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["INQUIRY_RESPONSE" /* INQUIRY_RESPONSE */]: (data) => ({
+    subject: `Response to Your Inquiry - ${data.inquiryId}`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Inquiry Response</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #17a2b8 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .response-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u2709\uFE0F Response to Your Inquiry</h1>
+            <p>We're here to help</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for your patience. Here's our response to your inquiry:</p>
+            
+            <div class="response-details">
+                <h3>Original Inquiry</h3>
+                <p><strong>Inquiry ID:</strong> ${data.inquiryId}</p>
+                <p><strong>Subject:</strong> ${data.inquirySubject}</p>
+                
+                <h3>Our Response</h3>
+                <p>${data.responseMessage}</p>
+            </div>
+            
+            <p>If you have any follow-up questions, please don't hesitate to contact us again.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Response to Your Inquiry
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for your patience. Here's our response to your inquiry:
+    
+    Original Inquiry:
+    Inquiry ID: ${data.inquiryId}
+    Subject: ${data.inquirySubject}
+    
+    Our Response:
+    ${data.responseMessage}
+    
+    If you have any follow-up questions, please don't hesitate to contact us again.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  })
+};
+async function sendEmail(options) {
+  try {
+    const transporter = createTransporter();
+    const template = emailTemplates[options.templateType];
+    if (!template) {
+      throw new Error(`Unknown email template: ${options.templateType}`);
+    }
+    const { subject, html, text } = template(options.templateData);
+    const mailOptions = {
+      from: options.from || process.env.FROM_EMAIL_NO_REPLY || "noreply@linesapparel.ca",
+      to: options.to,
+      subject,
+      html,
+      text,
+      ...options.replyTo && { replyTo: options.replyTo },
+      ...options.cc && { cc: options.cc },
+      ...options.bcc && { bcc: options.bcc }
+    };
+    console.log(`\u{1F4E7} Sending email to ${options.to} with template ${options.templateType}`);
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`\u2705 Email sent successfully: ${result.messageId}`);
+    return {
+      success: true,
+      messageId: result.messageId
+    };
+  } catch (error) {
+    console.error("\u274C Error sending email:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred"
+    };
+  }
+}
+async function sendOTPEmail(email, otp, name, expiryMinutes = 10) {
+  return sendEmail({
+    to: email,
+    templateType: "EMAIL_VERIFICATION_OTP" /* EMAIL_VERIFICATION_OTP */,
+    templateData: {
+      recipientEmail: email,
+      recipientName: name,
+      otp,
+      expiryMinutes,
+      companyName: "Lines Apparel",
+      supportEmail: process.env.FROM_EMAIL_NO_REPLY || "support@linesapparel.ca",
+      websiteUrl: "https://linesapparel.ca"
+    }
+  });
+}
+
+// src/controllers/auth.controller.ts
 var sendTokenResponse = (user, statusCode, res, req) => {
   const userAgent = req.headers["user-agent"] || "unknown";
   const ipAddress = req.ip || req.connection.remoteAddress || "unknown";
@@ -2973,31 +3597,72 @@ var register = async (req, res) => {
         lastName,
         phone
       });
-      console.log("\u2705 Shopify customer created:", shopifyCustomer?.id);
+      if (!shopifyCustomer?.id) {
+        throw new Error("Shopify customer creation failed or was throttled");
+      }
       const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
       customerAccessToken = tokenData;
-      console.log("\u2705 Customer access token obtained");
     } catch (shopifyError) {
+      if (shopifyError.message && shopifyError.message.includes("THROTTLED")) {
+        return res.status(429).json({
+          success: false,
+          message: "Too many signups. Please try again in a few minutes."
+        });
+      }
       console.error("\u274C Shopify customer creation failed:", shopifyError.message);
-      res.status(400).json({
-        message: "Failed to create Shopify customer",
-        error: shopifyError.message
+      return res.status(500).json({
+        success: false,
+        message: "Shopify customer creation failed. Please try again later."
       });
-      return;
     }
     const user = await user_model_default.create({
       name,
       email,
       password,
+      verified: false,
       ...phone ? { phone } : {},
-      shopify: {
-        customerId: shopifyCustomer?.id,
-        customerAccessToken: customerAccessToken?.accessToken,
-        customerAccessTokenExpiresAt: new Date(customerAccessToken?.expiresAt)
-      }
+      shopify: shopifyCustomer?.id && customerAccessToken ? {
+        customerId: shopifyCustomer.id,
+        customerAccessToken: customerAccessToken.accessToken,
+        customerAccessTokenExpiresAt: new Date(customerAccessToken.expiresAt)
+      } : {}
     });
     console.log("\u2705 User created with Shopify integration");
-    sendTokenResponse(user, 201, res, req);
+    const otpCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+    let otpRecord = await otp_model_default.findOne({ email });
+    if (otpRecord) {
+      otpRecord.otp = otpCode;
+      otpRecord.expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
+      await otpRecord.save();
+      console.log("\u2705 OTP updated for existing email");
+    } else {
+      otpRecord = await otp_model_default.create({
+        email,
+        otp: otpCode,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1e3)
+        // 10 minutes
+      });
+      console.log("\u2705 New OTP created");
+    }
+    try {
+      const emailResult = await sendOTPEmail(email, otpCode, name, 10);
+      if (emailResult.success) {
+        console.log("\u2705 OTP email sent successfully");
+      } else {
+        console.error("\u274C Failed to send OTP email:", emailResult.error);
+      }
+    } catch (emailError) {
+      console.error("\u274C Email sending error:", emailError.message);
+    }
+    res.status(201).json({
+      success: true,
+      message: "Registration successful! Please check your email for verification code.",
+      data: {
+        email: user.email,
+        name: user.name,
+        verified: user.verified
+      }
+    });
   } catch (error) {
     console.error("\u274C Registration failed:", error);
     res.status(500).json({ message: "Registration failed", error: error.message });
@@ -3162,18 +3827,144 @@ var changePassword = async (req, res) => {
     res.status(500).json({ message: "Password change failed", error: error.message });
   }
 };
+var verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      res.status(400).json({
+        success: false,
+        message: "Please provide both email and OTP"
+      });
+      return;
+    }
+    const otpRecord = await otp_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!otpRecord) {
+      res.status(400).json({
+        success: false,
+        message: "OTP not found. Please request a new verification code."
+      });
+      return;
+    }
+    if (otpRecord.isExpired()) {
+      await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
+      res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new verification code."
+      });
+      return;
+    }
+    if (otpRecord.otp !== otp) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid OTP. Please try again."
+      });
+      return;
+    }
+    const user = await user_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+      return;
+    }
+    user.verified = true;
+    await user.save();
+    await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
+    console.log("\u2705 User email verified successfully:", email);
+    sendTokenResponse(user, 200, res, req);
+  } catch (error) {
+    console.error("\u274C OTP verification failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "OTP verification failed",
+      error: error.message
+    });
+  }
+};
+var resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({
+        success: false,
+        message: "Please provide email address"
+      });
+      return;
+    }
+    const user = await user_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+      return;
+    }
+    if (user.verified) {
+      res.status(400).json({
+        success: false,
+        message: "Email is already verified"
+      });
+      return;
+    }
+    const otpCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+    const otpRecord = await otp_model_default.findOneAndUpdate(
+      { email: email.toLowerCase().trim() },
+      {
+        otp: otpCode,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1e3)
+        // 10 minutes
+      },
+      {
+        upsert: true,
+        new: true
+      }
+    );
+    try {
+      const emailResult = await sendOTPEmail(email, otpCode, user.name, 10);
+      if (emailResult.success) {
+        console.log("\u2705 OTP resent successfully to:", email);
+        res.status(200).json({
+          success: true,
+          message: "Verification code sent successfully! Please check your email."
+        });
+      } else {
+        console.error("\u274C Failed to resend OTP email:", emailResult.error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to send verification email. Please try again."
+        });
+      }
+    } catch (emailError) {
+      console.error("\u274C Email sending error:", emailError.message);
+      res.status(500).json({
+        success: false,
+        message: "Failed to send verification email. Please try again."
+      });
+    }
+  } catch (error) {
+    console.error("\u274C Resend OTP failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to resend OTP",
+      error: error.message
+    });
+  }
+};
 
 // src/routes/auth.routes.ts
 var router = express7__default.default.Router();
 router.post("/register", register);
 router.post("/login", login);
 router.get("/logout", logout);
+router.post("/verify-otp", verifyOTP);
+router.post("/resend-otp", resendOTP);
 router.get("/me", validateUserAccess, getCurrentUser);
 router.get("/refresh-token", validateUserAccess, refreshToken);
 router.put("/update-profile", validateUserAccess, updateProfile);
 router.put("/change-password", validateUserAccess, changePassword);
 var auth_routes_default = router;
-var PageSchema = new mongoose6.Schema(
+var PageSchema = new mongoose7.Schema(
   {
     name: {
       type: String,
@@ -3187,16 +3978,16 @@ var PageSchema = new mongoose6.Schema(
       trim: true
     },
     data: {
-      type: mongoose6.Schema.Types.Mixed,
+      type: mongoose7.Schema.Types.Mixed,
       default: {}
     },
     updatedBy: {
-      type: mongoose6.Schema.Types.ObjectId,
+      type: mongoose7.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
     createdBy: {
-      type: mongoose6.Schema.Types.ObjectId,
+      type: mongoose7.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
@@ -3213,7 +4004,7 @@ var PageSchema = new mongoose6.Schema(
     timestamps: true
   }
 );
-var Page = mongoose6__default.default.model("Page", PageSchema);
+var Page = mongoose7__default.default.model("Page", PageSchema);
 var MAX_FILE_SIZE = 10 * 1024 * 1024;
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
@@ -4500,7 +5291,7 @@ pagesRouter.post("/", uploadHomepageImages, createPage);
 pagesRouter.put("/:id", uploadHomepageImages, updatePage);
 pagesRouter.delete("/:id", deletePage);
 var pages_routes_default = pagesRouter;
-var testimonialSchema = new mongoose6.Schema(
+var testimonialSchema = new mongoose7.Schema(
   {
     name: {
       type: String,
@@ -4542,7 +5333,7 @@ var testimonialSchema = new mongoose6.Schema(
     timestamps: true
   }
 );
-var Testimonial = mongoose6__default.default.model("Testimonial", testimonialSchema);
+var Testimonial = mongoose7__default.default.model("Testimonial", testimonialSchema);
 
 // src/controllers/testimonial.controller.ts
 var getAllTestimonials = async (req, res) => {
@@ -4794,7 +5585,7 @@ testimonialsRouter.put("/:id", uploadTestimonialImage, updateTestimonial);
 testimonialsRouter.delete("/:id", deleteTestimonial);
 testimonialsRouter.patch("/:id/publish", togglePublishStatus);
 var testimonials_routes_default = testimonialsRouter;
-var InquirySchema = new mongoose6.Schema({
+var InquirySchema = new mongoose7.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true },
   purpose: {
@@ -4804,12 +5595,12 @@ var InquirySchema = new mongoose6.Schema({
   },
   message: { type: String, required: true },
   resolved: { type: Boolean, default: false },
-  resolvedBy: { type: mongoose6.Schema.Types.ObjectId, required: false, ref: "User" },
+  resolvedBy: { type: mongoose7.Schema.Types.ObjectId, required: false, ref: "User" },
   resolvingMessage: { type: String, required: false },
   createdAt: { type: Date, default: Date.now },
   resolvedAt: { type: Date, required: false }
 });
-var Inquiry = mongoose6__default.default.model("Inquiry", InquirySchema);
+var Inquiry = mongoose7__default.default.model("Inquiry", InquirySchema);
 
 // src/controllers/inquiry.controller.ts
 var getAllInquiries = async (req, res) => {
@@ -5549,10 +6340,10 @@ userRouter.post("/:id/wishlist", addToWishlist);
 userRouter.delete("/:id/wishlist/:productId", removeFromWishlist);
 userRouter.get("/:id/wishlist", getWishlist);
 var user_routes_default = userRouter;
-var reviewSchema = new mongoose6.Schema(
+var reviewSchema = new mongoose7.Schema(
   {
     userId: {
-      type: mongoose6.Schema.Types.ObjectId,
+      type: mongoose7.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
@@ -5597,7 +6388,7 @@ var reviewSchema = new mongoose6.Schema(
     timestamps: true
   }
 );
-var Review = mongoose6__default.default.model("Review", reviewSchema);
+var Review = mongoose7__default.default.model("Review", reviewSchema);
 
 // src/controllers/review.controller.ts
 var getProductReviews = async (req, res) => {
@@ -6007,10 +6798,10 @@ reviewsRouter.patch("/:id/helpful", toggleFoundHelpful);
 reviewsRouter.get("/", validateAdminAccess, getAllReviews);
 reviewsRouter.patch("/:id/verified-buyer", validateAdminAccess, toggleVerifiedBuyer);
 var reviews_routes_default = reviewsRouter;
-var cartSchema = new mongoose6__default.default.Schema(
+var cartSchema = new mongoose7__default.default.Schema(
   {
     userId: {
-      type: mongoose6__default.default.Schema.Types.ObjectId,
+      type: mongoose7__default.default.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
@@ -6030,7 +6821,7 @@ var cartSchema = new mongoose6__default.default.Schema(
     timestamps: true
   }
 );
-var Cart = mongoose6__default.default.model("Cart", cartSchema);
+var Cart = mongoose7__default.default.model("Cart", cartSchema);
 
 // src/controllers/cart.controller.ts
 var getCart = async (req, res) => {
@@ -6343,7 +7134,7 @@ var errorHandler = (err, req, res, next) => {
 var connectToDatabase = async () => {
   try {
     const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/ecommerce";
-    await mongoose6__default.default.connect(mongoUri);
+    await mongoose7__default.default.connect(mongoUri);
     console.log("\u{1F4E6} Connected to MongoDB database");
   } catch (error) {
     console.error("\u274C MongoDB connection error:", error);
