@@ -8,7 +8,10 @@ import {
   updateProfile,
   changePassword,
   verifyOTP,
-  resendOTP
+  resendOTP,
+  forgotPassword,
+  verifyForgotPasswordOTP,
+  resetPassword
 } from '@/controllers/auth.controller';
 import { validateUserAccess } from '@/middleware/auth.middleware';
 
@@ -19,6 +22,9 @@ router.post('/login', login);
 router.get('/logout', logout);
 router.post('/verify-otp', verifyOTP);
 router.post('/resend-otp', resendOTP);
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-forgot-password-otp', verifyForgotPasswordOTP);
+router.post('/reset-password', resetPassword);
 router.get('/me', validateUserAccess, getCurrentUser);
 router.get('/refresh-token', validateUserAccess, refreshToken);
 router.put('/update-profile', validateUserAccess, updateProfile);
