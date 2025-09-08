@@ -30,11 +30,12 @@ const sendTokenResponse = (user: IUser, statusCode: number, res: Response, req: 
   );
 
   // Determine the correct cookie settings based on environment
+  const isProduction = process.env.NODE_ENV === 'production';
   const cookieOptions = {
     expires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
     httpOnly: true,
-    secure: true, // Required for SameSite=None
-    sameSite: 'none' as const, // Allow cross-site cookies in both environments
+    secure: isProduction, // Only secure in production (HTTPS)
+    sameSite: isProduction ? ('none' as const) : ('lax' as const), // 'none' for cross-site in prod, 'lax' for same-site in dev
     path: '/', // Ensure cookie is sent for all paths
   };
 
@@ -51,7 +52,9 @@ const sendTokenResponse = (user: IUser, statusCode: number, res: Response, req: 
         name: user.name,
         email: user.email,
         phone: user.phone,
-        role: user.role
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       },
     });
 };
@@ -266,22 +269,21 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 // @route   GET /api/auth/logout
 export const logout = (req: Request, res: Response): void => {
   // Use the same secure cookie options when clearing (without expires)
+  const isProduction = process.env.NODE_ENV === 'production';
   const cookieOptions = {
     httpOnly: true,
-    secure: true,
-    sameSite: 'none' as const,
+    secure: isProduction,
+    sameSite: isProduction ? ('none' as const) : ('lax' as const),
     path: '/'
   };
-  
-  res.clearCookie('token', cookieOptions);
-  
-  res.status(200).json({ 
-    success: true, 
-    message: 'Logged out successfully' 
-  });
-};
 
-// @desc    Get current logged in user
+  res.clearCookie('token', cookieOptions);
+
+  res.status(200).json({
+    success: true,
+    message: 'Logged out successfully'
+  });
+};// @desc    Get current logged in user
 // @route   GET /api/auth/me
 export const getCurrentUser = async (req: any, res: Response): Promise<void> => {
   try {
@@ -304,6 +306,8 @@ export const getCurrentUser = async (req: any, res: Response): Promise<void> => 
         role: req.user.role,
         verified: req.user.verified,
         address: req.user.address || null,
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt,
       },
     });
   } catch (error: any) {

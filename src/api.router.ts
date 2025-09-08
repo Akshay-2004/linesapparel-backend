@@ -7,6 +7,7 @@ import inquiryRouter from '@/routes/inquiry.routes';
 import userRouter from '@/routes/user.routes';
 import reviewsRouter from '@/routes/reviews.routes';
 import cartRouter from './routes/cart.routes';
+import dashboardRouter from './routes/dashboard.routes';
 import { validateUserAccess } from './middleware/auth.middleware';
 
 const apiRouter = Router();
@@ -20,5 +21,6 @@ apiRouter.use('/inquiries', inquiryRouter);
 apiRouter.use('/users', userRouter);
 apiRouter.use('/reviews', reviewsRouter);
 apiRouter.use('/cart', validateUserAccess ,cartRouter);
+apiRouter.use('/dashboard', dashboardRouter);
 
 export default apiRouter;

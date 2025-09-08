@@ -3572,14 +3572,15 @@ var sendTokenResponse = (user, statusCode, res, req) => {
       // Longer expiry time to prevent frequent auth issues
     }
   );
+  const isProduction = process.env.NODE_ENV === "production";
   const cookieOptions = {
     expires: new Date(Date.now() + 24 * 60 * 60 * 1e3),
     // 24 hours
     httpOnly: true,
-    secure: true,
-    // Required for SameSite=None
-    sameSite: "none",
-    // Allow cross-site cookies in both environments
+    secure: isProduction,
+    // Only secure in production (HTTPS)
+    sameSite: isProduction ? "none" : "lax",
+    // 'none' for cross-site in prod, 'lax' for same-site in dev
     path: "/"
     // Ensure cookie is sent for all paths
   };
@@ -3592,7 +3593,9 @@ var sendTokenResponse = (user, statusCode, res, req) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      role: user.role
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
     }
   });
 };
@@ -3746,10 +3749,11 @@ var login = async (req, res) => {
   }
 };
 var logout = (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
   const cookieOptions = {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
     path: "/"
   };
   res.clearCookie("token", cookieOptions);
@@ -3775,7 +3779,9 @@ var getCurrentUser = async (req, res) => {
         phone: req.user.phone,
         role: req.user.role,
         verified: req.user.verified,
-        address: req.user.address || null
+        address: req.user.address || null,
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt
       }
     });
   } catch (error) {
@@ -7339,6 +7345,58 @@ cartRouter.get("/admin/all", validateAdminAccess, getAllCarts);
 cartRouter.delete("/admin/:id", validateAdminAccess, deleteCart);
 var cart_routes_default = cartRouter;
 
+// src/controllers/dashboard.controller.ts
+init_user_model();
+var getDashboardStats = async (req, res) => {
+  try {
+    const totalUsers = await user_model_default.countDocuments();
+    const totalCarts = await Cart.countDocuments();
+    const totalInquiries = await Inquiry.countDocuments();
+    const totalReviews = await Review.countDocuments();
+    const totalTestimonials = await Testimonial.countDocuments();
+    const carts = await Cart.find({}, "totalPrice");
+    const totalSales = carts.reduce((sum, cart) => sum + (cart.totalPrice || 0), 0);
+    const stats = {
+      totalUsers,
+      totalCarts,
+      totalInquiries,
+      totalReviews,
+      totalTestimonials,
+      totalSales: Math.round(totalSales * 100) / 100
+      // Round to 2 decimal places
+    };
+    sendResponse(res, 200, "Dashboard stats retrieved successfully", stats);
+  } catch (error) {
+    console.error("Error fetching dashboard stats:", error);
+    sendResponse(res, 500, "Failed to fetch dashboard stats", void 0, "Internal server error");
+  }
+};
+var getRecentOrders = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const recentCarts = await Cart.find().populate("userId", "name email").sort({ createdAt: -1 }).limit(limit);
+    const recentOrders = recentCarts.map((cart) => ({
+      id: cart._id.toString(),
+      customer: cart.userId?.name || cart.userId?.email || "Unknown Customer",
+      amount: `$${cart.totalPrice.toFixed(2)}`,
+      status: "Completed",
+      // Since these are completed carts
+      date: new Date(cart.createdAt).toLocaleDateString()
+    }));
+    sendResponse(res, 200, "Recent orders retrieved successfully", recentOrders);
+  } catch (error) {
+    console.error("Error fetching recent orders:", error);
+    sendResponse(res, 500, "Failed to fetch recent orders", void 0, "Internal server error");
+  }
+};
+
+// src/routes/dashboard.routes.ts
+var router2 = express7.Router();
+router2.use(validateUserAccess);
+router2.get("/stats", getDashboardStats);
+router2.get("/recent-orders", getRecentOrders);
+var dashboard_routes_default = router2;
+
 // src/api.router.ts
 var apiRouter = express7.Router();
 apiRouter.use("/shopify", shopify_routes_default);
@@ -7349,6 +7407,7 @@ apiRouter.use("/inquiries", inquiry_routes_default);
 apiRouter.use("/users", user_routes_default);
 apiRouter.use("/reviews", reviews_routes_default);
 apiRouter.use("/cart", validateUserAccess, cart_routes_default);
+apiRouter.use("/dashboard", dashboard_routes_default);
 var api_router_default = apiRouter;
 
 // src/middleware/errorHandler.middleware.ts
