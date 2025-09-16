@@ -1,10 +1,10 @@
-# AWS SES Email Utility
+# SMTP Email Utility
 
-A comprehensive email utility for sending various types of emails using AWS SES (Simple Email Service) with pre-designed templates.
+A comprehensive email utility for sending various types of emails using SMTP with nodemailer and pre-designed templates.
 
 ## Features
 
-- 🚀 **AWS SES Integration**: Reliable email delivery using AWS infrastructure
+- 🚀 **SMTP Integration**: Reliable email delivery using SMTP protocol
 - 📧 **Pre-built Templates**: Ready-to-use email templates for common use cases
 - 🎨 **Professional Design**: Beautiful, responsive HTML email templates
 - 📱 **Mobile Friendly**: Templates optimized for all devices
@@ -31,7 +31,8 @@ A comprehensive email utility for sending various types of emails using AWS SES 
 ### 1. Install Dependencies
 
 ```bash
-npm install @aws-sdk/client-ses
+npm install nodemailer
+npm install --save-dev @types/nodemailer
 ```
 
 ### 2. Environment Variables
@@ -39,330 +40,398 @@ npm install @aws-sdk/client-ses
 Add the following environment variables to your `.env` file:
 
 ```bash
-# AWS SES Configuration
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-aws-access-key-id
-AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
-FROM_EMAIL=noreply@yourcompany.com
+# SMTP Configuration
+SMTP_HOST=email-smtp.eu-north-1.amazonaws.com
+SMTP_PORT=587
+SMTP_USER=your-smtp-username
+SMTP_PASS=your-smtp-password
 
 # Email Configuration
-COMPANY_NAME=Your Company Name
-SUPPORT_EMAIL=support@yourcompany.com
-WEBSITE_URL=https://yourwebsite.com
+FROM_EMAIL_NO_REPLY=noreply@linesapparel.ca
+SUPPORT_EMAIL=support@linesapparel.ca
+COMPANY_NAME=Lines Apparel
+WEBSITE_URL=https://linesapparel.ca
 ```
 
-### 3. AWS SES Setup
-
-1. **Create AWS Account**: If you don't have one already
-2. **Verify Email Addresses**: In AWS SES console, verify your sender email address
-3. **Get Out of Sandbox**: Request production access for sending to unverified emails
-4. **Create IAM User**: Create an IAM user with SES sending permissions
-5. **Get Credentials**: Note down the Access Key ID and Secret Access Key
-
-### Required IAM Permissions
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "ses:SendEmail",
-                "ses:SendRawEmail"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-```
-
-## Usage
+## Quick Start
 
 ### Basic Usage
 
 ```typescript
-import { sendOTPEmail, sendWelcomeEmail } from '../utils/mail';
+import { sendOTPEmail, sendWelcomeEmail } from '../utils/mail.helpers';
 
-// Send OTP verification email
-const result = await sendOTPEmail(
+// Send OTP for email verification
+const otpResult = await sendOTPEmail(
   'user@example.com',
   '123456',
   'John Doe',
-  10 // OTP expires in 10 minutes
+  10 // expires in 10 minutes
 );
 
-if (result.success) {
-  console.log('Email sent successfully:', result.messageId);
-} else {
-  console.error('Email failed:', result.error);
-}
-```
-
-### Available Functions
-
-#### Authentication Emails
-
-```typescript
-// Send email verification OTP
-await sendOTPEmail(email, otp, userName, expiryMinutes);
-
 // Send welcome email
-await sendWelcomeEmail(email, userName);
-
-// Send forgot password OTP
-await sendForgotPasswordOTP(email, otp, userName, expiryMinutes);
-
-// Send password reset success confirmation
-await sendPasswordResetSuccess(email, userName);
-```
-
-#### E-commerce Emails
-
-```typescript
-// Send order confirmation
-await sendOrderConfirmation(email, {
-  orderNumber: 'ORD-001',
-  orderDate: '2025-01-15',
-  orderTotal: '$99.99',
-  customerName: 'John Doe'
-});
-
-// Send order shipped notification
-await sendOrderShipped(email, {
-  orderNumber: 'ORD-001',
-  trackingNumber: 'TRK123456',
-  estimatedDelivery: '2025-01-20',
-  customerName: 'John Doe'
-});
-```
-
-#### Customer Service Emails
-
-```typescript
-// Send inquiry received confirmation
-await sendInquiryReceived(email, {
-  inquiryId: 'INQ-001',
-  inquirySubject: 'Product Question',
-  inquiryMessage: 'Question about product availability',
-  customerName: 'John Doe'
-});
-
-// Send inquiry response
-await sendInquiryResponse(email, {
-  inquiryId: 'INQ-001',
-  inquirySubject: 'Product Question',
-  responseMessage: 'The product is available and in stock.',
-  customerName: 'John Doe'
-});
+const welcomeResult = await sendWelcomeEmail('user@example.com', 'John Doe');
 ```
 
 ### Advanced Usage
 
-#### Custom Email with Generic Function
-
 ```typescript
-import { sendEmail, EmailTemplateType } from '../utils/mail';
+import { sendEmail, EmailTemplateType } from '../utils/mail.helpers';
 
+// Send custom email with specific template
 const result = await sendEmail({
-  to: 'recipient@example.com',
-  templateType: EmailTemplateType.WELCOME_EMAIL,
+  to: 'customer@example.com',
+  templateType: EmailTemplateType.ORDER_CONFIRMATION,
   templateData: {
-    recipientEmail: 'recipient@example.com',
-    recipientName: 'John Doe',
-    companyName: 'My Company',
-    supportEmail: 'support@mycompany.com',
-    websiteUrl: 'https://mycompany.com'
+    recipientEmail: 'customer@example.com',
+    recipientName: 'Jane Smith',
+    orderNumber: 'LA-2024-001',
+    orderDate: '2024-01-15',
+    orderTotal: '$129.99',
+    companyName: 'Lines Apparel',
+    supportEmail: 'support@linesapparel.ca',
+    websiteUrl: 'https://linesapparel.ca',
   },
-  from: 'custom@mycompany.com',
-  replyTo: 'noreply@mycompany.com',
-  cc: ['manager@mycompany.com'],
-  bcc: ['archive@mycompany.com']
 });
 ```
 
-#### Bulk Email Sending
+## API Reference
+
+### Core Functions
+
+#### `sendEmail(options: SendEmailOptions): Promise<EmailResult>`
+
+The main function for sending emails with templates.
+
+**Parameters:**
+- `options.to` (string): Recipient email address
+- `options.templateType` (EmailTemplateType): Template to use
+- `options.templateData` (EmailTemplateData): Data for template variables
+- `options.from` (string, optional): Sender email (defaults to FROM_EMAIL_NO_REPLY)
+- `options.replyTo` (string, optional): Reply-to email address
+- `options.cc` (string[], optional): CC recipients
+- `options.bcc` (string[], optional): BCC recipients
+
+**Returns:** Promise resolving to EmailResult with success status and message ID
+
+### Convenience Functions
+
+#### `sendOTPEmail(email, otp, name?, expiryMinutes?)`
+Send OTP for email verification or password reset.
+
+#### `sendWelcomeEmail(email, name?)`
+Send welcome email to new users.
+
+#### `sendForgotPasswordOTP(email, otp, name?, expiryMinutes?)`
+Send OTP for password reset.
+
+#### `sendPasswordResetSuccess(email, name?)`
+Confirm successful password reset.
+
+#### `sendOrderConfirmation(email, orderData)`
+Send order confirmation with details.
+
+#### `sendOrderShipped(email, shippingData)`
+Notify customer about order shipment.
+
+#### `sendInquiryReceived(email, inquiryData)`
+Acknowledge customer inquiry.
+
+#### `sendInquiryResponse(email, responseData)`
+Send response to customer inquiry.
+
+## Email Template Types
 
 ```typescript
-const recipients = ['user1@example.com', 'user2@example.com', 'user3@example.com'];
-
-const bulkResult = await sendBulkEmail(
-  recipients,
-  EmailTemplateType.WELCOME_EMAIL,
-  {
-    companyName: 'My Company',
-    supportEmail: 'support@mycompany.com',
-    websiteUrl: 'https://mycompany.com'
-  }
-);
-
-console.log(`Sent: ${bulkResult.totalSent}, Failed: ${bulkResult.totalFailed}`);
+enum EmailTemplateType {
+  EMAIL_VERIFICATION_OTP = 'EMAIL_VERIFICATION_OTP',
+  WELCOME_EMAIL = 'WELCOME_EMAIL',
+  FORGOT_PASSWORD_OTP = 'FORGOT_PASSWORD_OTP',
+  PASSWORD_RESET_SUCCESS = 'PASSWORD_RESET_SUCCESS',
+  ORDER_CONFIRMATION = 'ORDER_CONFIRMATION',
+  ORDER_SHIPPED = 'ORDER_SHIPPED',
+  INQUIRY_RECEIVED = 'INQUIRY_RECEIVED',
+  INQUIRY_RESPONSE = 'INQUIRY_RESPONSE',
+}
 ```
 
-## Integration Examples
+## Template Data Interfaces
 
-### In Authentication Controller
+### Base Email Data
+```typescript
+interface BaseEmailData {
+  recipientEmail: string;
+  recipientName?: string;
+  companyName?: string;
+  supportEmail?: string;
+  websiteUrl?: string;
+}
+```
+
+### OTP Email Data
+```typescript
+interface OTPEmailData extends BaseEmailData {
+  otp: string;
+  expiryMinutes: number;
+}
+```
+
+### Order Email Data
+```typescript
+interface OrderEmailData extends BaseEmailData {
+  orderNumber: string;
+  orderDate: string;
+  orderTotal: string;
+  trackingNumber?: string;
+  estimatedDelivery?: string;
+}
+```
+
+### Inquiry Email Data
+```typescript
+interface InquiryEmailData extends BaseEmailData {
+  inquiryId: string;
+  inquirySubject: string;
+  inquiryMessage?: string;
+  responseMessage?: string;
+}
+```
+
+## Usage in Controllers
+
+### Authentication Controller Example
 
 ```typescript
-// auth.controller.ts
-import { sendOTPEmail, sendWelcomeEmail } from '../utils/mail';
+import { sendOTPEmail, sendWelcomeEmail } from '../utils/mail.helpers';
 
-export const register = async (req: Request, res: Response) => {
+// During user registration
+export const registerUser = async (req: Request, res: Response) => {
   try {
-    // Create user logic...
+    // ... user creation logic ...
     
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Send verification email
-    const emailResult = await sendOTPEmail(user.email, otp, user.name);
+    // Send verification OTP
+    const emailResult = await sendOTPEmail(
+      user.email,
+      otpCode,
+      user.name,
+      10
+    );
     
     if (!emailResult.success) {
-      console.error('Failed to send verification email:', emailResult.error);
-      // Handle email failure (maybe still allow registration but log the issue)
+      console.error('Failed to send OTP:', emailResult.error);
+      // Handle error appropriately
     }
     
-    res.json({ message: 'Registration successful. Please check your email for verification.' });
+    res.json({ success: true, message: 'Verification email sent' });
   } catch (error) {
-    res.status(500).json({ error: 'Registration failed' });
+    // Handle error
   }
 };
 
+// After email verification
 export const verifyEmail = async (req: Request, res: Response) => {
   try {
-    // Verify OTP logic...
+    // ... verification logic ...
     
-    // Send welcome email after successful verification
+    // Send welcome email
     await sendWelcomeEmail(user.email, user.name);
     
-    res.json({ message: 'Email verified successfully!' });
+    res.json({ success: true, message: 'Email verified successfully' });
   } catch (error) {
-    res.status(400).json({ error: 'Verification failed' });
+    // Handle error
   }
 };
 ```
 
-### In Order Controller
+### Order Controller Example
 
 ```typescript
-// order.controller.ts
-import { sendOrderConfirmation, sendOrderShipped } from '../utils/mail';
+import { sendOrderConfirmation } from '../utils/mail.helpers';
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
-    // Create order logic...
+    // ... order creation logic ...
     
     // Send order confirmation
-    await sendOrderConfirmation(customer.email, {
+    const emailResult = await sendOrderConfirmation(order.customerEmail, {
       orderNumber: order.orderNumber,
       orderDate: order.createdAt.toLocaleDateString(),
       orderTotal: `$${order.total.toFixed(2)}`,
-      customerName: customer.name
+      customerName: order.customerName,
     });
     
-    res.json({ message: 'Order created successfully' });
+    if (!emailResult.success) {
+      console.error('Failed to send order confirmation:', emailResult.error);
+    }
+    
+    res.json({ success: true, order });
   } catch (error) {
-    res.status(500).json({ error: 'Order creation failed' });
+    // Handle error
   }
 };
-```
-
-## Template Customization
-
-To add new email templates:
-
-1. **Add to EmailTemplateType enum**:
-```typescript
-export enum EmailTemplateType {
-  // ... existing types
-  CUSTOM_TEMPLATE = 'CUSTOM_TEMPLATE',
-}
-```
-
-2. **Add template function**:
-```typescript
-const emailTemplates: Record<EmailTemplateType, (data: any) => { subject: string; html: string; text: string }> = {
-  // ... existing templates
-  [EmailTemplateType.CUSTOM_TEMPLATE]: (data: CustomEmailData) => ({
-    subject: 'Your Custom Subject',
-    html: `<!-- Your HTML template -->`,
-    text: `Your text template`,
-  }),
-};
-```
-
-3. **Create helper function**:
-```typescript
-export async function sendCustomTemplate(email: string, data: CustomEmailData): Promise<EmailResult> {
-  return sendEmail({
-    to: email,
-    templateType: EmailTemplateType.CUSTOM_TEMPLATE,
-    templateData: data,
-  });
-}
 ```
 
 ## Error Handling
 
-The utility includes comprehensive error handling:
+The email utility includes comprehensive error handling:
 
 ```typescript
 const result = await sendOTPEmail('user@example.com', '123456');
 
 if (result.success) {
-  console.log('Email sent:', result.messageId);
+  console.log('Email sent successfully:', result.messageId);
 } else {
-  console.error('Email failed:', result.error);
+  console.error('Email failed to send:', result.error);
   // Handle the error appropriately
-  // - Log to monitoring service
-  // - Retry sending
-  // - Notify administrators
+  // - Log the error
+  // - Retry the operation
   // - Show user-friendly message
 }
 ```
 
-## Rate Limits
+## Best Practices
 
-AWS SES has rate limits. The utility includes:
-- Batch processing for bulk emails
-- Automatic delays between batches
-- Error handling for rate limit exceeded
+### 1. Environment Configuration
+- Always use environment variables for SMTP credentials
+- Never commit sensitive information to version control
+- Use different SMTP settings for development and production
 
-## Security Best Practices
+### 2. Error Handling
+- Always check the success status of email operations
+- Log email failures for debugging
+- Implement retry logic for critical emails
+- Provide fallback mechanisms
 
-1. **Environment Variables**: Never hardcode AWS credentials
-2. **IAM Roles**: Use minimal required permissions
-3. **Email Validation**: Validate email addresses before sending
-4. **Rate Limiting**: Implement application-level rate limiting
-5. **Monitoring**: Monitor email sending metrics and failures
-6. **Bounce Handling**: Implement bounce and complaint handling
+### 3. Template Customization
+- Customize email templates to match your brand
+- Test templates across different email clients
+- Keep HTML simple and compatible
+- Always provide plain text alternatives
+
+### 4. Performance
+- Use bulk email functions for multiple recipients
+- Implement rate limiting to respect SMTP limits
+- Consider using background jobs for non-critical emails
+
+### 5. Security
+- Validate email addresses before sending
+- Use secure SMTP connections (TLS/SSL)
+- Implement proper authentication
+- Monitor for suspicious email patterns
+
+## Testing
+
+### Unit Testing
+```typescript
+import { sendOTPEmail } from '../utils/mail.helpers';
+
+describe('Email Utility', () => {
+  it('should send OTP email successfully', async () => {
+    const result = await sendOTPEmail(
+      'test@example.com',
+      '123456',
+      'Test User',
+      10
+    );
+    
+    expect(result.success).toBe(true);
+    expect(result.messageId).toBeDefined();
+  });
+});
+```
+
+### Integration Testing
+- Test with real SMTP servers in staging environment
+- Verify email delivery and formatting
+- Test all template types and data variations
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Email not delivered**: Check spam folder, verify sender email in AWS SES
-2. **Rate limit exceeded**: Implement delays between emails
-3. **Invalid credentials**: Verify AWS credentials and region
-4. **Sandbox mode**: Request production access in AWS SES console
+#### 1. Authentication Failed
+**Error:** "Invalid login: 535-5.7.8 Username and Password not accepted"
+**Solution:** 
+- Verify SMTP credentials in environment variables
+- Check if SMTP user has proper permissions
+- Ensure using correct SMTP host and port
 
-### Debugging
+#### 2. Connection Timeout
+**Error:** "Connection timeout"
+**Solution:**
+- Check SMTP host and port configuration
+- Verify network connectivity
+- Check firewall settings
 
-Enable detailed logging by setting environment variable:
+#### 3. Rate Limiting
+**Error:** "Rate limit exceeded"
+**Solution:**
+- Implement delays between bulk emails
+- Use proper batch sizes
+- Consider upgrading SMTP service plan
+
+#### 4. Template Rendering Issues
+**Error:** Template variables not displaying correctly
+**Solution:**
+- Verify template data structure
+- Check for typos in variable names
+- Ensure all required fields are provided
+
+### Debug Mode
+Enable debug logging by setting environment variable:
 ```bash
-DEBUG=email
+DEBUG_EMAIL=true
 ```
 
-## Cost Optimization
+This will provide detailed information about SMTP connections and email sending operations.
 
-- **Free Tier**: 62,000 emails per month when sending from EC2
-- **Pay-as-you-go**: $0.10 per 1,000 emails after free tier
-- **Monitor Usage**: Use AWS CloudWatch to monitor costs
+## Migration from AWS SES
+
+If migrating from AWS SES to SMTP:
+
+1. **Update Dependencies:**
+   ```bash
+   npm uninstall @aws-sdk/client-ses
+   npm install nodemailer @types/nodemailer
+   ```
+
+2. **Update Environment Variables:**
+   ```bash
+   # Remove AWS variables
+   # AWS_REGION=
+   # AWS_ACCESS_KEY_ID=
+   # AWS_SECRET_ACCESS_KEY=
+   
+   # Add SMTP variables
+   SMTP_HOST=your-smtp-host
+   SMTP_PORT=587
+   SMTP_USER=your-smtp-username
+   SMTP_PASS=your-smtp-password
+   ```
+
+3. **Update Import Statements:**
+   ```typescript
+   // Old AWS SES imports
+   // import { SESClient } from '@aws-sdk/client-ses';
+   
+   // New SMTP imports
+   import { sendEmail, EmailTemplateType } from '../utils/mail.helpers';
+   ```
+
+4. **Test Thoroughly:**
+   - Verify all email templates work correctly
+   - Test error handling and edge cases
+   - Monitor email delivery rates
 
 ## Support
 
-For issues and questions:
-- Check AWS SES documentation
-- Review CloudWatch logs
-- Contact AWS support for service issues
-- Create issues in your project repository
+For additional support and questions:
+- Check the [examples](../examples/emailExamples.ts) for implementation patterns
+- Review error logs for specific issues
+- Ensure environment variables are properly configured
+- Test with a minimal example to isolate problems
+
+---
+
+**Note:** This utility is designed for transactional emails. For marketing emails or newsletters, consider using dedicated email marketing services that provide better deliverability and analytics.

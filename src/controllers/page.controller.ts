@@ -9,6 +9,7 @@ import { getHomepageUploadMiddleware } from '@/utils/imageUpload.helpers';
 import { upload } from '@/utils/cloudinary';
 import fs from 'fs';
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 // Create a new page
 export const createPage = async (req: Request, res: Response) => {
@@ -782,3 +783,176 @@ export const uploadHomepageImages = getHomepageUploadMiddleware();
 
 // Export upload middleware for legal documents
 export const uploadLegalDocument = upload.legalDocument.single('markdownFile');
+
+// ==================== NAVBAR MANAGEMENT ====================
+
+// Get navbar configuration
+export const getNavbar = async (req: Request, res: Response) => {
+  try {
+    const navbar = await Page.findOne({ path: 'navbar' })
+      .populate('createdBy updatedBy', 'email name')
+      .sort({ createdAt: -1 });
+
+    if (!navbar) {
+      // Return default navbar structure if none exists
+      const defaultNavbarData = {
+        navItems: [
+          {
+            id: uuidv4(),
+            title: "WOMEN",
+            order: 1,
+            categories: [
+              {
+                id: uuidv4(),
+                title: "Women's Clothing",
+                order: 1,
+                items: [
+                  { label: "T-Shirts", keyword: "womens-tshirts", href: "/womens/t-shirts", order: 1 },
+                  { label: "Skirts", keyword: "womens-skirts", href: "/womens/skirts", order: 2 },
+                  { label: "Shorts", keyword: "womens-shorts", href: "/womens/shorts", order: 3 },
+                  { label: "Jeans", keyword: "womens-jeans", href: "/womens/jeans", order: 4 }
+                ]
+              }
+            ]
+          },
+          {
+            id: uuidv4(),
+            title: "MEN",
+            order: 2,
+            categories: [
+              {
+                id: uuidv4(),
+                title: "Men's Clothing",
+                order: 1,
+                items: [
+                  { label: "T-Shirts", keyword: "mens-tshirts", href: "/mens/t-shirts", order: 1 },
+                  { label: "Shirts", keyword: "mens-shirts", href: "/mens/shirts", order: 2 },
+                  { label: "Jeans", keyword: "mens-jeans", href: "/mens/jeans", order: 3 }
+                ]
+              }
+            ]
+          }
+        ]
+      };
+
+      return res.status(200).json({
+        success: true,
+        message: 'Default navbar configuration retrieved',
+        data: defaultNavbarData
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Navbar configuration retrieved successfully',
+      data: navbar.data
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving navbar configuration',
+      error: error.message
+    });
+  }
+};
+
+// Create or update navbar configuration
+export const updateNavbar = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { navItems } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    if (!navItems || !Array.isArray(navItems)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid navbar data. navItems array is required.'
+      });
+    }
+
+    // Process navItems to add IDs and proper ordering
+    const processedNavItems = navItems.map((section: any, sectionIndex: number) => ({
+      id: uuidv4(),
+      title: section.title,
+      order: sectionIndex + 1,
+      categories: section.categories.map((category: any, categoryIndex: number) => ({
+        id: uuidv4(),
+        title: category.title,
+        order: categoryIndex + 1,
+        items: category.items.map((item: any, itemIndex: number) => ({
+          label: item.label,
+          keyword: item.keyword,
+          href: item.href,
+          order: itemIndex + 1
+        }))
+      }))
+    }));
+
+    const navbarData = {
+      navItems: processedNavItems
+    };
+
+    // Check if navbar page exists
+    let navbar = await Page.findOne({ path: 'navbar' });
+
+    if (navbar) {
+      // Update existing navbar
+      navbar.data = navbarData;
+      navbar.updatedBy = userId;
+      navbar.version = (navbar.version || 1) + 1;
+      await navbar.save();
+    } else {
+      // Create new navbar page
+      navbar = new Page({
+        name: 'Navbar Configuration',
+        path: 'navbar',
+        data: navbarData,
+        createdBy: userId,
+        updatedBy: userId,
+        isActive: true,
+        version: 1
+      });
+      await navbar.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Navbar configuration updated successfully',
+      data: navbar.data
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating navbar configuration',
+      error: error.message
+    });
+  }
+};
+
+// Delete navbar configuration (reset to default)
+export const deleteNavbar = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    // Delete the navbar page
+    await Page.deleteOne({ path: 'navbar' });
+
+    res.status(200).json({
+      success: true,
+      message: 'Navbar configuration reset to default successfully'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting navbar configuration',
+      error: error.message
+    });
+  }
+};

@@ -115,6 +115,52 @@ class ShopifyService {
     }
   }
 
+  private async makeStorefrontRequest(
+    query: string,
+    variables?: any
+  ): Promise<any> {
+    const url = `https://${shopifyConfig.storeUrl}/api/${shopifyConfig.apiVersion}/graphql.json`;
+
+    const options: RequestInit = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": shopifyConfig.storefrontToken,
+      },
+      body: JSON.stringify({
+        query,
+        variables: variables || {},
+      }),
+    };
+
+    try {
+      const response = await fetch(url, options);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Shopify Storefront API error (${response.status}): ${JSON.stringify(
+            errorData
+          )}`
+        );
+      }
+
+      const responseData = await response.json();
+
+      // Check for GraphQL errors
+      if (responseData.errors && responseData.errors.length > 0) {
+        throw new Error(
+          `Storefront GraphQL errors: ${JSON.stringify(responseData.errors)}`
+        );
+      }
+
+      return responseData;
+    } catch (error) {
+      console.error("Error making Storefront GraphQL request:", error);
+      throw error;
+    }
+  }
+
   private buildQueryString(params: QueryParams): string {
     if (!params || Object.keys(params).length === 0) return "";
 
@@ -251,6 +297,238 @@ class ShopifyService {
       "POST"
     );
     return response.data;
+  }
+
+  async getOrdersByEmail(email: string, params: QueryParams = {}) {
+    // Use the REST API to get orders and filter by email
+    // This avoids the customer PII restrictions of the GraphQL API
+    try {
+      const limit = params.limit || 50;
+      console.log(`🔍 [getOrdersByEmail] Searching for orders with email: ${email}`);
+      console.log(`📊 [getOrdersByEmail] Request parameters:`, { limit, params });
+      
+      // Try with a higher limit and different status parameters to get all orders
+      const apiUrl = `/orders.json?limit=250&status=any&financial_status=any&fulfillment_status=any`;
+      console.log(`🌐 [getOrdersByEmail] Making API request to: ${apiUrl}`);
+      
+      const ordersResponse = await this.makeRequest<any>(apiUrl);
+      
+      console.log(`📦 [getOrdersByEmail] Raw Shopify API response status:`, ordersResponse.status);
+      console.log(`📦 [getOrdersByEmail] Total orders retrieved:`, ordersResponse.data?.orders?.length || 0);
+      
+      if (!ordersResponse.data || !ordersResponse.data.orders) {
+        console.log(`❌ [getOrdersByEmail] No orders data in response`);
+        return {
+          orders: [],
+          customer: null,
+          total_count: 0,
+          current_page: 1,
+          total_pages: 0,
+          has_next_page: false,
+          has_previous_page: false
+        };
+      }
+
+      // Log sample of orders to see their structure
+      if (ordersResponse.data.orders.length > 0) {
+        console.log(`📋 [getOrdersByEmail] Sample order structure:`, {
+          id: ordersResponse.data.orders[0].id,
+          email: ordersResponse.data.orders[0].email,
+          created_at: ordersResponse.data.orders[0].created_at,
+          financial_status: ordersResponse.data.orders[0].financial_status,
+          total_price: ordersResponse.data.orders[0].total_price
+        });
+        
+        // Log all unique emails found in orders (for debugging)
+        const allEmails = ordersResponse.data.orders
+          .map((order: any) => order.email)
+          .filter((email: any) => email) // Remove null/undefined
+          .filter((email: any, index: number, arr: any[]) => arr.indexOf(email) === index); // Remove duplicates
+        console.log(`📧 [getOrdersByEmail] All unique emails in orders:`, allEmails);
+      }
+
+      // Filter orders by email
+      console.log(`🔎 [getOrdersByEmail] Filtering orders by email: ${email.toLowerCase()}`);
+      const userOrders = ordersResponse.data.orders.filter((order: any) => {
+        const orderEmail = order.email?.toLowerCase();
+        const targetEmail = email.toLowerCase();
+        const matches = orderEmail === targetEmail;
+        
+        if (order.email) {
+          console.log(`📨 [getOrdersByEmail] Order ${order.id}: email "${orderEmail}" ${matches ? '✅ MATCHES' : '❌ NO MATCH'} target "${targetEmail}"`);
+        } else {
+          console.log(`📭 [getOrdersByEmail] Order ${order.id}: has no email`);
+        }
+        
+        return order.email && matches;
+      });
+
+      console.log(`🎯 [getOrdersByEmail] Found ${userOrders.length} matching orders for email: ${email}`);
+      
+      if (userOrders.length === 0) {
+        console.log(`⚠️ [getOrdersByEmail] No orders found for email: ${email}`);
+        console.log(`💡 [getOrdersByEmail] Suggestion: Check if the email is correct and if orders exist in Shopify`);
+        return {
+          orders: [],
+          customer: null,
+          total_count: 0,
+          current_page: 1,
+          total_pages: 0,
+          has_next_page: false,
+          has_previous_page: false
+        };
+      }
+
+      // Log details of matching orders
+      userOrders.forEach((order: any, index: number) => {
+        console.log(`📋 [getOrdersByEmail] Order ${index + 1}/${userOrders.length}:`, {
+          id: order.id,
+          name: order.name,
+          email: order.email,
+          created_at: order.created_at,
+          total_price: order.total_price,
+          financial_status: order.financial_status,
+          fulfillment_status: order.fulfillment_status,
+          line_items_count: order.line_items?.length || 0,
+          fulfillments_count: order.fulfillments?.length || 0
+        });
+      });
+
+      // Transform the orders to match the expected format
+      console.log(`🔄 [getOrdersByEmail] Transforming ${userOrders.length} orders...`);
+      const transformedOrders = userOrders.map((order: any, index: number) => {
+        console.log(`🔄 [getOrdersByEmail] Transforming order ${index + 1}: ${order.id}`);
+        
+        // Process fulfillments
+        const fulfillments = order.fulfillments ? order.fulfillments.map((fulfillment: any) => {
+          console.log(`📦 [getOrdersByEmail] Processing fulfillment ${fulfillment.id}:`, {
+            status: fulfillment.status,
+            tracking_number: fulfillment.tracking_number,
+            tracking_company: fulfillment.tracking_company,
+            tracking_urls: fulfillment.tracking_urls
+          });
+          
+          return {
+            id: fulfillment.id,
+            status: fulfillment.status,
+            trackingNumber: fulfillment.tracking_number || null,
+            trackingUrls: fulfillment.tracking_urls || [],
+            trackingCompany: fulfillment.tracking_company || null,
+            createdAt: fulfillment.created_at,
+            updatedAt: fulfillment.updated_at,
+            lineItems: {
+              edges: fulfillment.line_items ? fulfillment.line_items.map((item: any) => ({
+                node: {
+                  id: item.id,
+                  quantity: item.quantity
+                }
+              })) : []
+            }
+          };
+        }) : [];
+
+        console.log(`📦 [getOrdersByEmail] Order ${order.id} has ${fulfillments.length} fulfillments`);
+
+        // Process line items
+        const lineItems = {
+          edges: order.line_items ? order.line_items.map((item: any) => {
+            console.log(`🛍️ [getOrdersByEmail] Processing line item ${item.id}:`, {
+              title: item.title,
+              quantity: item.quantity,
+              price: item.price,
+              variant_id: item.variant_id,
+              product_id: item.product_id
+            });
+            
+            return {
+              node: {
+                id: item.id,
+                title: item.title,
+                quantity: item.quantity,
+                variant: {
+                  id: item.variant_id,
+                  title: item.variant_title || item.title,
+                  price: item.price,
+                  image: item.variant_image ? {
+                    url: item.variant_image,
+                    altText: item.title
+                  } : undefined
+                },
+                product: {
+                  id: item.product_id,
+                  handle: item.sku || `product-${item.product_id}`, // Fallback if handle not available
+                  title: item.name || item.title
+                }
+              }
+            };
+          }) : []
+        };
+
+        console.log(`🛍️ [getOrdersByEmail] Order ${order.id} has ${lineItems.edges.length} line items`);
+
+        const transformedOrder = {
+          id: order.id,
+          name: order.name,
+          createdAt: order.created_at,
+          processedAt: order.processed_at,
+          totalPrice: order.total_price,
+          currencyCode: order.currency,
+          financialStatus: order.financial_status,
+          fulfillmentStatus: order.fulfillment_status,
+          fulfillments,
+          lineItems,
+          shippingAddress: order.shipping_address ? {
+            firstName: order.shipping_address.first_name,
+            lastName: order.shipping_address.last_name,
+            address1: order.shipping_address.address1,
+            city: order.shipping_address.city,
+            province: order.shipping_address.province,
+            country: order.shipping_address.country,
+            zip: order.shipping_address.zip
+          } : undefined
+        };
+
+        console.log(`✅ [getOrdersByEmail] Successfully transformed order ${order.id}`);
+        return transformedOrder;
+      });
+
+      // Extract customer info from the first order
+      const customerInfo = userOrders.length > 0 ? {
+        id: userOrders[0].customer?.id || 'unknown',
+        email: email,
+        firstName: userOrders[0].billing_address?.first_name || userOrders[0].shipping_address?.first_name || 'Customer',
+        lastName: userOrders[0].billing_address?.last_name || userOrders[0].shipping_address?.last_name || ''
+      } : null;
+
+      console.log(`👤 [getOrdersByEmail] Customer info extracted:`, customerInfo);
+
+      const result = {
+        orders: transformedOrders,
+        customer: customerInfo,
+        total_count: transformedOrders.length,
+        current_page: 1,
+        total_pages: 1,
+        has_next_page: false,
+        has_previous_page: false
+      };
+
+      console.log(`🎉 [getOrdersByEmail] Final result summary:`, {
+        orders_count: result.orders.length,
+        customer_email: result.customer?.email,
+        customer_name: `${result.customer?.firstName} ${result.customer?.lastName}`.trim()
+      });
+
+      return result;
+    } catch (error) {
+      console.error('❌ [getOrdersByEmail] Error fetching orders by email:', error);
+      console.error('❌ [getOrdersByEmail] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        email: email,
+        params: params
+      });
+      throw error;
+    }
   }
 
   // Customer methods
@@ -719,6 +997,873 @@ class ShopifyService {
   async getDraftOrder(draftOrderId: string): Promise<any> {
     const response = await this.makeRequest<any>(`/draft_orders/${draftOrderId}.json`);
     return response.data.draft_order;
+  }
+
+  // Storefront API methods for customer authentication and orders
+  async createStorefrontCustomer(customerData: { email: string; password: string; firstName: string; lastName?: string; phone?: string }): Promise<any> {
+    const mutation = `
+      mutation customerCreate($input: CustomerCreateInput!) {
+        customerCreate(input: $input) {
+          customer {
+            id
+            email
+            firstName
+            lastName
+            phone
+            createdAt
+          }
+          customerUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      input: {
+        email: customerData.email,
+        password: customerData.password,
+        firstName: customerData.firstName,
+        lastName: customerData.lastName || '',
+        phone: customerData.phone || null,
+        acceptsMarketing: false
+      }
+    };
+
+    try {
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const createResult = result.data?.customerCreate;
+      
+      if (createResult?.customerUserErrors && createResult.customerUserErrors.length > 0) {
+        throw new Error(`Customer creation errors: ${JSON.stringify(createResult.customerUserErrors)}`);
+      }
+
+      return createResult?.customer;
+    } catch (error) {
+      console.error('Error creating Shopify customer:', error);
+      throw error;
+    }
+  }
+
+  async createCustomerAccessToken(email: string, password: string): Promise<{ accessToken: string; expiresAt: string }> {
+    const mutation = `
+      mutation customerAccessTokenCreate($input: CustomerAccessTokenCreateInput!) {
+        customerAccessTokenCreate(input: $input) {
+          customerAccessToken {
+            accessToken
+            expiresAt
+          }
+          customerUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      input: {
+        email,
+        password
+      }
+    };
+
+    try {
+      console.log('🔑 Creating customer access token for:', email);
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const tokenResult = result.data?.customerAccessTokenCreate;
+      
+      if (tokenResult?.customerUserErrors && tokenResult.customerUserErrors.length > 0) {
+        console.error('❌ Customer access token errors:', tokenResult.customerUserErrors);
+        throw new Error(`Access token creation errors: ${JSON.stringify(tokenResult.customerUserErrors)}`);
+      }
+
+      const accessTokenData = tokenResult?.customerAccessToken;
+      if (!accessTokenData) {
+        throw new Error('No access token returned from Shopify');
+      }
+
+      console.log('✅ Customer access token created successfully');
+      return accessTokenData;
+    } catch (error) {
+      console.error('❌ Error creating customer access token:', error);
+      throw error;
+    }
+  }
+
+  async getCustomerWithAccessToken(accessToken: string): Promise<any> {
+    const query = `
+      query getCustomer($customerAccessToken: String!) {
+        customer(customerAccessToken: $customerAccessToken) {
+          id
+          email
+          firstName
+          lastName
+          phone
+          createdAt
+          updatedAt
+          orders(first: 50) {
+            edges {
+              node {
+                id
+                name
+                orderNumber
+                processedAt
+                totalPriceV2 {
+                  amount
+                  currencyCode
+                }
+                financialStatus
+                fulfillmentStatus
+                lineItems(first: 250) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      variant {
+                        id
+                        title
+                        priceV2 {
+                          amount
+                          currencyCode
+                        }
+                        image {
+                          url
+                          altText
+                        }
+                        product {
+                          id
+                          handle
+                          title
+                        }
+                      }
+                    }
+                  }
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  address1
+                  city
+                  province
+                  country
+                  zip
+                }
+                fulfillments {
+                  trackingInfo {
+                    number
+                    url
+                  }
+                  trackingCompany
+                  status
+                  createdAt
+                  updatedAt
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      customerAccessToken: accessToken
+    };
+
+    try {
+      console.log('🔍 Fetching customer data with access token');
+      const result = await this.makeStorefrontRequest(query, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const customer = result.data?.customer;
+      if (!customer) {
+        throw new Error('Customer not found or access token invalid');
+      }
+
+      console.log('✅ Customer data fetched successfully');
+      return customer;
+    } catch (error) {
+      console.error('❌ Error fetching customer:', error);
+      throw error;
+    }
+  }
+
+  async getCustomerOrdersWithAccessToken(
+    accessToken: string, 
+    options: { first?: number; after?: string } = {}
+  ): Promise<{ orders: any[]; customer: any; totalCount: number; pageInfo: any }> {
+    const { first = 10, after } = options;
+    
+    const query = `
+      query getCustomerOrders($customerAccessToken: String!, $first: Int!, $after: String) {
+        customer(customerAccessToken: $customerAccessToken) {
+          id
+          email
+          firstName
+          lastName
+          orders(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            totalCount
+            edges {
+              cursor
+              node {
+                id
+                name
+                orderNumber
+                processedAt
+                totalPriceV2 {
+                  amount
+                  currencyCode
+                }
+                financialStatus
+                fulfillmentStatus
+                lineItems(first: 250) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      variant {
+                        id
+                        title
+                        priceV2 {
+                          amount
+                          currencyCode
+                        }
+                        image {
+                          url
+                          altText
+                        }
+                        product {
+                          id
+                          handle
+                          title
+                        }
+                      }
+                    }
+                  }
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  address1
+                  city
+                  province
+                  country
+                  zip
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      customerAccessToken: accessToken,
+      first,
+      ...(after && { after })
+    };
+
+    try {
+      console.log('🔍 Fetching customer orders with access token', { first, after });
+      const result = await this.makeStorefrontRequest(query, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const customer = result.data?.customer;
+      if (!customer) {
+        throw new Error('Customer not found or access token invalid');
+      }
+
+      const ordersConnection = customer.orders;
+      const orders = ordersConnection.edges.map((edge: any) => edge.node);
+      
+      console.log('✅ Customer orders fetched successfully', { 
+        ordersCount: orders.length,
+        totalCount: ordersConnection.totalCount 
+      });
+      
+      return {
+        orders,
+        customer: {
+          id: customer.id,
+          email: customer.email,
+          firstName: customer.firstName,
+          lastName: customer.lastName
+        },
+        totalCount: ordersConnection.totalCount,
+        pageInfo: ordersConnection.pageInfo
+      };
+    } catch (error) {
+      console.error('❌ Error fetching customer orders:', error);
+      throw error;
+    }
+  }
+
+  async renewCustomerAccessToken(accessToken: string): Promise<{ accessToken: string; expiresAt: string }> {
+    const mutation = `
+      mutation customerAccessTokenRenew($customerAccessToken: String!) {
+        customerAccessTokenRenew(customerAccessToken: $customerAccessToken) {
+          customerAccessToken {
+            accessToken
+            expiresAt
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      customerAccessToken: accessToken
+    };
+
+    try {
+      console.log('🔄 Renewing customer access token');
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const renewResult = result.data?.customerAccessTokenRenew;
+      
+      if (renewResult?.userErrors && renewResult.userErrors.length > 0) {
+        throw new Error(`Token renewal errors: ${JSON.stringify(renewResult.userErrors)}`);
+      }
+
+      const accessTokenData = renewResult?.customerAccessToken;
+      if (!accessTokenData) {
+        throw new Error('No renewed access token returned from Shopify');
+      }
+
+      console.log('✅ Customer access token renewed successfully');
+      return accessTokenData;
+    } catch (error) {
+      console.error('❌ Error renewing customer access token:', error);
+      throw error;
+    }
+  }
+
+  // Enhanced Storefront API methods for product search and filtering
+  async searchProductsStorefront(options: {
+    query?: string;
+    first?: number;
+    after?: string;
+    sortKey?: 'RELEVANCE' | 'PRICE' | 'TITLE' | 'CREATED_AT' | 'UPDATED_AT' | 'BEST_SELLING' | 'PRODUCT_TYPE' | 'VENDOR';
+    reverse?: boolean;
+    productType?: string;
+    vendor?: string;
+    available?: boolean;
+    priceMin?: number;
+    priceMax?: number;
+  } = {}): Promise<{
+    products: any[];
+    totalCount: number;
+    pageInfo: any;
+    filters: {
+      availableVendors: string[];
+      availableProductTypes: string[];
+      priceRange: { min: number; max: number };
+    };
+  }> {
+    const {
+      query = '',
+      first = 20,
+      after,
+      sortKey = 'RELEVANCE',
+      reverse = false,
+      productType,
+      vendor,
+      available,
+      priceMin,
+      priceMax
+    } = options;
+
+    // Build the search query with filters
+    let searchQuery = query;
+    const filters: string[] = [];
+    
+    if (productType) {
+      filters.push(`product_type:${productType}`);
+    }
+    if (vendor) {
+      filters.push(`vendor:${vendor}`);
+    }
+    if (available !== undefined) {
+      filters.push(`available:${available}`);
+    }
+    if (priceMin !== undefined || priceMax !== undefined) {
+      const priceFilter = [];
+      if (priceMin !== undefined) priceFilter.push(`>=${priceMin}`);
+      if (priceMax !== undefined) priceFilter.push(`<=${priceMax}`);
+      filters.push(`variants.price:${priceFilter.join(' AND ')}`);
+    }
+
+    if (filters.length > 0) {
+      searchQuery = searchQuery ? `${searchQuery} ${filters.join(' ')}` : filters.join(' ');
+    }
+
+    const graphqlQuery = `
+      query searchProducts($query: String!, $first: Int!, $after: String, $sortKey: ProductSortKeys!, $reverse: Boolean!) {
+        products(query: $query, first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+          }
+          edges {
+            cursor
+            node {
+              id
+              handle
+              title
+              description
+              productType
+              vendor
+              createdAt
+              updatedAt
+              tags
+              availableForSale
+              totalInventory
+              images(first: 5) {
+                edges {
+                  node {
+                    id
+                    url
+                    altText
+                    width
+                    height
+                  }
+                }
+              }
+              variants(first: 250) {
+                edges {
+                  node {
+                    id
+                    title
+                    priceV2 {
+                      amount
+                      currencyCode
+                    }
+                    compareAtPriceV2 {
+                      amount
+                      currencyCode
+                    }
+                    availableForSale
+                    quantityAvailable
+                    selectedOptions {
+                      name
+                      value
+                    }
+                    image {
+                      id
+                      url
+                      altText
+                    }
+                  }
+                }
+              }
+              options {
+                id
+                name
+                values
+              }
+              collections(first: 5) {
+                edges {
+                  node {
+                    id
+                    handle
+                    title
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      query: searchQuery,
+      first,
+      sortKey,
+      reverse,
+      ...(after && { after })
+    };
+
+    try {
+      console.log('🔍 Searching products with query:', searchQuery);
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const productsConnection = result.data?.products;
+      if (!productsConnection) {
+        throw new Error('No products data returned from search');
+      }
+
+      const products = productsConnection.edges.map((edge: any) => edge.node);
+      
+      // Extract filter options from the results
+      const vendorSet = new Set<string>();
+      const productTypeSet = new Set<string>();
+      let minPrice = Infinity;
+      let maxPrice = 0;
+
+      products.forEach((product: any) => {
+        if (product.vendor) vendorSet.add(product.vendor);
+        if (product.productType) productTypeSet.add(product.productType);
+        
+        product.variants.edges.forEach((variantEdge: any) => {
+          const price = parseFloat(variantEdge.node.priceV2.amount);
+          minPrice = Math.min(minPrice, price);
+          maxPrice = Math.max(maxPrice, price);
+        });
+      });
+
+      console.log('✅ Product search completed', { 
+        productsCount: products.length,
+        vendors: Array.from(vendorSet),
+        productTypes: Array.from(productTypeSet)
+      });
+      
+      return {
+        products,
+        totalCount: products.length, // Note: Storefront API doesn't provide total count
+        pageInfo: productsConnection.pageInfo,
+        filters: {
+          availableVendors: Array.from(vendorSet),
+          availableProductTypes: Array.from(productTypeSet),
+          priceRange: {
+            min: minPrice === Infinity ? 0 : minPrice,
+            max: maxPrice
+          }
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error searching products:', error);
+      throw error;
+    }
+  }
+
+  async getCollectionProductsStorefront(
+    collectionHandle: string,
+    options: {
+      first?: number;
+      after?: string;
+      sortKey?: 'COLLECTION_DEFAULT' | 'PRICE' | 'TITLE' | 'CREATED' | 'UPDATED' | 'BEST_SELLING' | 'ID' | 'MANUAL';
+      reverse?: boolean;
+      filters?: {
+        available?: boolean;
+        priceMin?: number;
+        priceMax?: number;
+        productType?: string;
+        vendor?: string;
+      };
+    } = {}
+  ): Promise<{
+    collection: any;
+    products: any[];
+    pageInfo: any;
+    filters: {
+      availableVendors: string[];
+      availableProductTypes: string[];
+      priceRange: { min: number; max: number };
+    };
+  }> {
+    const {
+      first = 20,
+      after,
+      sortKey = 'COLLECTION_DEFAULT',
+      reverse = false,
+      filters = {}
+    } = options;
+
+    // Note: Storefront API doesn't support filtering products within collections
+    // We'll fetch all products and filter client-side, or use a larger limit
+    const graphqlQuery = `
+      query getCollectionProducts($handle: String!, $first: Int!, $after: String, $sortKey: ProductCollectionSortKeys!, $reverse: Boolean!) {
+        collection(handle: $handle) {
+          id
+          handle
+          title
+          description
+          image {
+            id
+            url
+            altText
+          }
+          products(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            edges {
+              cursor
+              node {
+                id
+                handle
+                title
+                description
+                productType
+                vendor
+                createdAt
+                updatedAt
+                tags
+                availableForSale
+                totalInventory
+                images(first: 5) {
+                  edges {
+                    node {
+                      id
+                      url
+                      altText
+                      width
+                      height
+                    }
+                  }
+                }
+                variants(first: 250) {
+                  edges {
+                    node {
+                      id
+                      title
+                      priceV2 {
+                        amount
+                        currencyCode
+                      }
+                      compareAtPriceV2 {
+                        amount
+                        currencyCode
+                      }
+                      availableForSale
+                      quantityAvailable
+                      selectedOptions {
+                        name
+                        value
+                      }
+                      image {
+                        id
+                        url
+                        altText
+                      }
+                    }
+                  }
+                }
+                options {
+                  id
+                  name
+                  values
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      handle: collectionHandle,
+      first,
+      sortKey,
+      reverse,
+      ...(after && { after })
+    };
+
+    try {
+      console.log('🔍 Fetching collection products:', { collectionHandle, first, sortKey });
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const collection = result.data?.collection;
+      if (!collection) {
+        throw new Error('Collection not found');
+      }
+
+      let products = collection.products.edges.map((edge: any) => edge.node);
+      
+      // Apply client-side filtering since Storefront API doesn't support product filtering within collections
+      if (filters.available !== undefined) {
+        products = products.filter((product: any) => product.availableForSale === filters.available);
+      }
+      
+      if (filters.productType) {
+        products = products.filter((product: any) => 
+          product.productType?.toLowerCase().includes(filters.productType!.toLowerCase())
+        );
+      }
+      
+      if (filters.vendor) {
+        products = products.filter((product: any) => 
+          product.vendor?.toLowerCase().includes(filters.vendor!.toLowerCase())
+        );
+      }
+      
+      if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
+        products = products.filter((product: any) => {
+          const price = parseFloat(product.variants.edges[0]?.node.priceV2.amount || '0');
+          const meetsMin = filters.priceMin === undefined || price >= filters.priceMin;
+          const meetsMax = filters.priceMax === undefined || price <= filters.priceMax;
+          return meetsMin && meetsMax;
+        });
+      }
+
+      // Extract filter options from ALL products (before filtering)
+      const allProducts = collection.products.edges.map((edge: any) => edge.node);
+      const vendorSet = new Set<string>();
+      const productTypeSet = new Set<string>();
+      let minPrice = Infinity;
+      let maxPrice = 0;
+
+      allProducts.forEach((product: any) => {
+        if (product.vendor) vendorSet.add(product.vendor);
+        if (product.productType) productTypeSet.add(product.productType);
+        
+        product.variants.edges.forEach((variantEdge: any) => {
+          const price = parseFloat(variantEdge.node.priceV2.amount);
+          minPrice = Math.min(minPrice, price);
+          maxPrice = Math.max(maxPrice, price);
+        });
+      });
+
+      console.log('✅ Collection products fetched successfully', { 
+        collection: collection.title,
+        totalProducts: allProducts.length,
+        filteredProducts: products.length,
+        vendors: Array.from(vendorSet),
+        productTypes: Array.from(productTypeSet)
+      });
+      
+      return {
+        collection: {
+          id: collection.id,
+          handle: collection.handle,
+          title: collection.title,
+          description: collection.description,
+          image: collection.image?.url
+        },
+        products,
+        pageInfo: {
+          ...collection.products.pageInfo,
+          // Note: pageInfo might not be accurate after client-side filtering
+        },
+        filters: {
+          availableVendors: Array.from(vendorSet),
+          availableProductTypes: Array.from(productTypeSet),
+          priceRange: {
+            min: minPrice === Infinity ? 0 : minPrice,
+            max: maxPrice
+          }
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error fetching collection products:', error);
+      throw error;
+    }
+  }
+
+  async getProductRecommendations(
+    productId: string,
+    intent: 'RELATED' | 'COMPLEMENTARY' = 'RELATED'
+  ): Promise<any[]> {
+    const graphqlQuery = `
+      query getProductRecommendations($productId: ID!, $intent: ProductRecommendationIntent!) {
+        productRecommendations(productId: $productId, intent: $intent) {
+          id
+          handle
+          title
+          description
+          productType
+          vendor
+          availableForSale
+          images(first: 3) {
+            edges {
+              node {
+                id
+                url
+                altText
+              }
+            }
+          }
+          variants(first: 5) {
+            edges {
+              node {
+                id
+                title
+                priceV2 {
+                  amount
+                  currencyCode
+                }
+                compareAtPriceV2 {
+                  amount
+                  currencyCode
+                }
+                availableForSale
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      productId,
+      intent
+    };
+
+    try {
+      console.log('🔍 Fetching product recommendations');
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+
+      const recommendations = result.data?.productRecommendations || [];
+      
+      console.log('✅ Product recommendations fetched successfully', { 
+        count: recommendations.length
+      });
+      
+      return recommendations;
+    } catch (error) {
+      console.error('❌ Error fetching product recommendations:', error);
+      throw error;
+    }
   }
 }
 

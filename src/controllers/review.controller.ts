@@ -303,7 +303,7 @@ export const deleteReview = async (req: any, res: Response) => {
 export const toggleFoundHelpful = async (req: any, res: Response) => {
   try {
     const { id } = req.params;
-    const { helpful } = req.body; // true for helpful, false for not helpful
+    const { helpful, action = 'add' } = req.body; // action can be 'add' or 'remove'
 
     if (helpful === undefined) {
       return res.status(400).json({
@@ -321,10 +321,22 @@ export const toggleFoundHelpful = async (req: any, res: Response) => {
     }
 
     const updateFields: any = {};
-    if (helpful === true || helpful === 'true') {
-      updateFields.foundHelpful = (review.foundHelpful || 0) + 1;
+    const isHelpful = helpful === true || helpful === 'true';
+
+    if (action === 'remove') {
+      // Decrement the count (remove vote)
+      if (isHelpful) {
+        updateFields.foundHelpful = Math.max((review.foundHelpful || 0) - 1, 0);
+      } else {
+        updateFields.notHelpful = Math.max((review.notHelpful || 0) - 1, 0);
+      }
     } else {
-      updateFields.notHelpful = (review.notHelpful || 0) + 1;
+      // Increment the count (add vote)
+      if (isHelpful) {
+        updateFields.foundHelpful = (review.foundHelpful || 0) + 1;
+      } else {
+        updateFields.notHelpful = (review.notHelpful || 0) + 1;
+      }
     }
 
     const updatedReview = await Review.findByIdAndUpdate(
@@ -335,7 +347,9 @@ export const toggleFoundHelpful = async (req: any, res: Response) => {
 
     res.status(200).json({
       success: true,
-      message: `Review marked as ${helpful ? 'helpful' : 'not helpful'}`,
+      message: action === 'remove'
+        ? `Removed ${isHelpful ? 'helpful' : 'not helpful'} vote`
+        : `Review marked as ${isHelpful ? 'helpful' : 'not helpful'}`,
       data: updatedReview
     });
   } catch (error: any) {

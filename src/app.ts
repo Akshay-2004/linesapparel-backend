@@ -20,16 +20,22 @@ validateShopifyConfig();
 // Configure middleware stack - order matters
 app.use(express.json()); // Parse JSON request bodies
 app.use(cookieParser()); // Parse cookies from request headers
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000", // Allow requests only from configured client
-    credentials: true, // Enable cookies and authorization headers
+    origin: [
+      "https://linesapparel.ca",
+      "https://www.linesapparel.ca",
+      "http://localhost:3000" // keep for local dev
+    ],
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     exposedHeaders: ["Set-Cookie"],
-    maxAge: 86400 // CORS preflight cache time (24 hour)
+    maxAge: 86400
   })
 );
+
 
 // Mount API routes under /api prefix
 app.use("/api", apiRouter);

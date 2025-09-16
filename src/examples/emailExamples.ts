@@ -9,11 +9,11 @@ import {
   sendInquiryReceived,
   sendInquiryResponse,
   EmailTemplateType,
-} from '../utils/mail';
+} from '../utils/mail.helpers';
 
 /**
  * Example usage of the email utility functions
- * This file demonstrates how to use the AWS SES email service
+ * This file demonstrates how to use the SMTP email service with nodemailer
  */
 
 // Example 1: Send OTP for email verification

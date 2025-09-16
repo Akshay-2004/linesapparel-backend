@@ -1,34 +1,164 @@
 'use strict';
 
+var mongoose7 = require('mongoose');
+var bcrypt = require('bcrypt');
 var dotenv = require('dotenv');
 var express7 = require('express');
 var cookieParser = require('cookie-parser');
 var cors = require('cors');
 var crypto = require('crypto');
 var jwt = require('jsonwebtoken');
-var mongoose6 = require('mongoose');
-var bcrypt = require('bcrypt');
+var nodemailer = require('nodemailer');
 var cloudinary = require('cloudinary');
 var multerStorageCloudinary = require('multer-storage-cloudinary');
 var multer = require('multer');
 var fs = require('fs');
 var axios = require('axios');
+var uuid = require('uuid');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
+var mongoose7__default = /*#__PURE__*/_interopDefault(mongoose7);
+var bcrypt__default = /*#__PURE__*/_interopDefault(bcrypt);
 var dotenv__default = /*#__PURE__*/_interopDefault(dotenv);
 var express7__default = /*#__PURE__*/_interopDefault(express7);
 var cookieParser__default = /*#__PURE__*/_interopDefault(cookieParser);
 var cors__default = /*#__PURE__*/_interopDefault(cors);
 var crypto__default = /*#__PURE__*/_interopDefault(crypto);
 var jwt__default = /*#__PURE__*/_interopDefault(jwt);
-var mongoose6__default = /*#__PURE__*/_interopDefault(mongoose6);
-var bcrypt__default = /*#__PURE__*/_interopDefault(bcrypt);
+var nodemailer__default = /*#__PURE__*/_interopDefault(nodemailer);
 var multer__default = /*#__PURE__*/_interopDefault(multer);
 var fs__default = /*#__PURE__*/_interopDefault(fs);
 var axios__default = /*#__PURE__*/_interopDefault(axios);
 
-// src/index.ts
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/models/user.model.ts
+var user_model_exports = {};
+__export(user_model_exports, {
+  EUserRole: () => EUserRole,
+  default: () => user_model_default
+});
+var EUserRole, UserSchema, user_model_default;
+var init_user_model = __esm({
+  "src/models/user.model.ts"() {
+    EUserRole = /* @__PURE__ */ ((EUserRole3) => {
+      EUserRole3["client"] = "client";
+      EUserRole3["admin"] = "admin";
+      EUserRole3["superAdmin"] = "super_admin";
+      return EUserRole3;
+    })(EUserRole || {});
+    UserSchema = new mongoose7.Schema({
+      email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
+      },
+      password: {
+        type: String,
+        required: true,
+        minlength: 6
+      },
+      address: {
+        street: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        city: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        state: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        zip: {
+          type: String,
+          trim: true,
+          required: false
+        },
+        country: {
+          type: String,
+          trim: true,
+          required: false
+        }
+      },
+      role: {
+        type: String,
+        enum: Object.values(EUserRole),
+        default: "client" /* client */
+      },
+      name: {
+        type: String,
+        required: true
+      },
+      phone: {
+        type: String,
+        trim: true
+      },
+      verified: {
+        type: Boolean,
+        default: false
+      },
+      wishlisted: {
+        type: [String],
+        default: []
+      },
+      shopify: {
+        customerId: {
+          type: String,
+          required: false
+        },
+        customerAccessToken: {
+          type: String,
+          required: false
+        },
+        customerAccessTokenExpiresAt: {
+          type: Date,
+          required: false
+        }
+      }
+    }, { timestamps: true });
+    UserSchema.pre("save", async function(next) {
+      if (!this.isModified("password")) return next();
+      try {
+        const salt = await bcrypt__default.default.genSalt(10);
+        this.password = await bcrypt__default.default.hash(this.password, salt);
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+    UserSchema.methods.comparePassword = async function(candidatePassword) {
+      return await bcrypt__default.default.compare(candidatePassword, this.password);
+    };
+    user_model_default = mongoose7__default.default.model("User", UserSchema);
+  }
+});
 
 // src/config/shopify.config.ts
 var shopifyConfig = {
@@ -36,6 +166,7 @@ var shopifyConfig = {
   apiSecret: process.env.SHOPIFY_API_SECRET || "",
   storeUrl: process.env.SHOPIFY_STORE_URL || "",
   accessToken: process.env.SHOPIFY_ACCESS_TOKEN || "",
+  storefrontToken: process.env.SHOPIFY_STOREFRONT_TOKEN || "",
   apiVersion: "2023-07",
   // Using a stable API version
   scopes: [
@@ -73,10 +204,13 @@ var shopifyConfig = {
   }
 };
 var validateShopifyConfig = () => {
-  const { apiKey, apiSecret, storeUrl, accessToken } = shopifyConfig;
+  const { apiKey, apiSecret, storeUrl, accessToken, storefrontToken } = shopifyConfig;
   if (!apiKey || !apiSecret || !storeUrl || !accessToken) {
     console.error("\u274C Missing Shopify configuration. Please check your .env file.");
     return false;
+  }
+  if (!storefrontToken) {
+    console.warn("\u26A0\uFE0F Missing Shopify Storefront API token. Customer order features may not work.");
   }
   if (!storeUrl.includes("myshopify.com") && !storeUrl.includes("shopify.com")) {
     console.warn("\u26A0\uFE0F Shopify store URL might be invalid. Expected format: yourstore.myshopify.com");
@@ -161,6 +295,41 @@ var ShopifyService = class {
       return responseData;
     } catch (error) {
       console.error("Error making GraphQL request:", error);
+      throw error;
+    }
+  }
+  async makeStorefrontRequest(query, variables) {
+    const url = `https://${shopifyConfig.storeUrl}/api/${shopifyConfig.apiVersion}/graphql.json`;
+    const options = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": shopifyConfig.storefrontToken
+      },
+      body: JSON.stringify({
+        query,
+        variables: variables || {}
+      })
+    };
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Shopify Storefront API error (${response.status}): ${JSON.stringify(
+            errorData
+          )}`
+        );
+      }
+      const responseData = await response.json();
+      if (responseData.errors && responseData.errors.length > 0) {
+        throw new Error(
+          `Storefront GraphQL errors: ${JSON.stringify(responseData.errors)}`
+        );
+      }
+      return responseData;
+    } catch (error) {
+      console.error("Error making Storefront GraphQL request:", error);
       throw error;
     }
   }
@@ -278,6 +447,198 @@ var ShopifyService = class {
       "POST"
     );
     return response.data;
+  }
+  async getOrdersByEmail(email, params = {}) {
+    try {
+      const limit = params.limit || 50;
+      console.log(`\u{1F50D} [getOrdersByEmail] Searching for orders with email: ${email}`);
+      console.log(`\u{1F4CA} [getOrdersByEmail] Request parameters:`, { limit, params });
+      const apiUrl = `/orders.json?limit=250&status=any&financial_status=any&fulfillment_status=any`;
+      console.log(`\u{1F310} [getOrdersByEmail] Making API request to: ${apiUrl}`);
+      const ordersResponse = await this.makeRequest(apiUrl);
+      console.log(`\u{1F4E6} [getOrdersByEmail] Raw Shopify API response status:`, ordersResponse.status);
+      console.log(`\u{1F4E6} [getOrdersByEmail] Total orders retrieved:`, ordersResponse.data?.orders?.length || 0);
+      if (!ordersResponse.data || !ordersResponse.data.orders) {
+        console.log(`\u274C [getOrdersByEmail] No orders data in response`);
+        return {
+          orders: [],
+          customer: null,
+          total_count: 0,
+          current_page: 1,
+          total_pages: 0,
+          has_next_page: false,
+          has_previous_page: false
+        };
+      }
+      if (ordersResponse.data.orders.length > 0) {
+        console.log(`\u{1F4CB} [getOrdersByEmail] Sample order structure:`, {
+          id: ordersResponse.data.orders[0].id,
+          email: ordersResponse.data.orders[0].email,
+          created_at: ordersResponse.data.orders[0].created_at,
+          financial_status: ordersResponse.data.orders[0].financial_status,
+          total_price: ordersResponse.data.orders[0].total_price
+        });
+        const allEmails = ordersResponse.data.orders.map((order) => order.email).filter((email2) => email2).filter((email2, index, arr) => arr.indexOf(email2) === index);
+        console.log(`\u{1F4E7} [getOrdersByEmail] All unique emails in orders:`, allEmails);
+      }
+      console.log(`\u{1F50E} [getOrdersByEmail] Filtering orders by email: ${email.toLowerCase()}`);
+      const userOrders = ordersResponse.data.orders.filter((order) => {
+        const orderEmail = order.email?.toLowerCase();
+        const targetEmail = email.toLowerCase();
+        const matches = orderEmail === targetEmail;
+        if (order.email) {
+          console.log(`\u{1F4E8} [getOrdersByEmail] Order ${order.id}: email "${orderEmail}" ${matches ? "\u2705 MATCHES" : "\u274C NO MATCH"} target "${targetEmail}"`);
+        } else {
+          console.log(`\u{1F4ED} [getOrdersByEmail] Order ${order.id}: has no email`);
+        }
+        return order.email && matches;
+      });
+      console.log(`\u{1F3AF} [getOrdersByEmail] Found ${userOrders.length} matching orders for email: ${email}`);
+      if (userOrders.length === 0) {
+        console.log(`\u26A0\uFE0F [getOrdersByEmail] No orders found for email: ${email}`);
+        console.log(`\u{1F4A1} [getOrdersByEmail] Suggestion: Check if the email is correct and if orders exist in Shopify`);
+        return {
+          orders: [],
+          customer: null,
+          total_count: 0,
+          current_page: 1,
+          total_pages: 0,
+          has_next_page: false,
+          has_previous_page: false
+        };
+      }
+      userOrders.forEach((order, index) => {
+        console.log(`\u{1F4CB} [getOrdersByEmail] Order ${index + 1}/${userOrders.length}:`, {
+          id: order.id,
+          name: order.name,
+          email: order.email,
+          created_at: order.created_at,
+          total_price: order.total_price,
+          financial_status: order.financial_status,
+          fulfillment_status: order.fulfillment_status,
+          line_items_count: order.line_items?.length || 0,
+          fulfillments_count: order.fulfillments?.length || 0
+        });
+      });
+      console.log(`\u{1F504} [getOrdersByEmail] Transforming ${userOrders.length} orders...`);
+      const transformedOrders = userOrders.map((order, index) => {
+        console.log(`\u{1F504} [getOrdersByEmail] Transforming order ${index + 1}: ${order.id}`);
+        const fulfillments = order.fulfillments ? order.fulfillments.map((fulfillment) => {
+          console.log(`\u{1F4E6} [getOrdersByEmail] Processing fulfillment ${fulfillment.id}:`, {
+            status: fulfillment.status,
+            tracking_number: fulfillment.tracking_number,
+            tracking_company: fulfillment.tracking_company,
+            tracking_urls: fulfillment.tracking_urls
+          });
+          return {
+            id: fulfillment.id,
+            status: fulfillment.status,
+            trackingNumber: fulfillment.tracking_number || null,
+            trackingUrls: fulfillment.tracking_urls || [],
+            trackingCompany: fulfillment.tracking_company || null,
+            createdAt: fulfillment.created_at,
+            updatedAt: fulfillment.updated_at,
+            lineItems: {
+              edges: fulfillment.line_items ? fulfillment.line_items.map((item) => ({
+                node: {
+                  id: item.id,
+                  quantity: item.quantity
+                }
+              })) : []
+            }
+          };
+        }) : [];
+        console.log(`\u{1F4E6} [getOrdersByEmail] Order ${order.id} has ${fulfillments.length} fulfillments`);
+        const lineItems = {
+          edges: order.line_items ? order.line_items.map((item) => {
+            console.log(`\u{1F6CD}\uFE0F [getOrdersByEmail] Processing line item ${item.id}:`, {
+              title: item.title,
+              quantity: item.quantity,
+              price: item.price,
+              variant_id: item.variant_id,
+              product_id: item.product_id
+            });
+            return {
+              node: {
+                id: item.id,
+                title: item.title,
+                quantity: item.quantity,
+                variant: {
+                  id: item.variant_id,
+                  title: item.variant_title || item.title,
+                  price: item.price,
+                  image: item.variant_image ? {
+                    url: item.variant_image,
+                    altText: item.title
+                  } : void 0
+                },
+                product: {
+                  id: item.product_id,
+                  handle: item.sku || `product-${item.product_id}`,
+                  // Fallback if handle not available
+                  title: item.name || item.title
+                }
+              }
+            };
+          }) : []
+        };
+        console.log(`\u{1F6CD}\uFE0F [getOrdersByEmail] Order ${order.id} has ${lineItems.edges.length} line items`);
+        const transformedOrder = {
+          id: order.id,
+          name: order.name,
+          createdAt: order.created_at,
+          processedAt: order.processed_at,
+          totalPrice: order.total_price,
+          currencyCode: order.currency,
+          financialStatus: order.financial_status,
+          fulfillmentStatus: order.fulfillment_status,
+          fulfillments,
+          lineItems,
+          shippingAddress: order.shipping_address ? {
+            firstName: order.shipping_address.first_name,
+            lastName: order.shipping_address.last_name,
+            address1: order.shipping_address.address1,
+            city: order.shipping_address.city,
+            province: order.shipping_address.province,
+            country: order.shipping_address.country,
+            zip: order.shipping_address.zip
+          } : void 0
+        };
+        console.log(`\u2705 [getOrdersByEmail] Successfully transformed order ${order.id}`);
+        return transformedOrder;
+      });
+      const customerInfo = userOrders.length > 0 ? {
+        id: userOrders[0].customer?.id || "unknown",
+        email,
+        firstName: userOrders[0].billing_address?.first_name || userOrders[0].shipping_address?.first_name || "Customer",
+        lastName: userOrders[0].billing_address?.last_name || userOrders[0].shipping_address?.last_name || ""
+      } : null;
+      console.log(`\u{1F464} [getOrdersByEmail] Customer info extracted:`, customerInfo);
+      const result = {
+        orders: transformedOrders,
+        customer: customerInfo,
+        total_count: transformedOrders.length,
+        current_page: 1,
+        total_pages: 1,
+        has_next_page: false,
+        has_previous_page: false
+      };
+      console.log(`\u{1F389} [getOrdersByEmail] Final result summary:`, {
+        orders_count: result.orders.length,
+        customer_email: result.customer?.email,
+        customer_name: `${result.customer?.firstName} ${result.customer?.lastName}`.trim()
+      });
+      return result;
+    } catch (error) {
+      console.error("\u274C [getOrdersByEmail] Error fetching orders by email:", error);
+      console.error("\u274C [getOrdersByEmail] Error details:", {
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : void 0,
+        email,
+        params
+      });
+      throw error;
+    }
   }
   // Customer methods
   async getCustomers(params = {}) {
@@ -638,6 +999,742 @@ var ShopifyService = class {
   async getDraftOrder(draftOrderId) {
     const response = await this.makeRequest(`/draft_orders/${draftOrderId}.json`);
     return response.data.draft_order;
+  }
+  // Storefront API methods for customer authentication and orders
+  async createStorefrontCustomer(customerData) {
+    const mutation = `
+      mutation customerCreate($input: CustomerCreateInput!) {
+        customerCreate(input: $input) {
+          customer {
+            id
+            email
+            firstName
+            lastName
+            phone
+            createdAt
+          }
+          customerUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
+    const variables = {
+      input: {
+        email: customerData.email,
+        password: customerData.password,
+        firstName: customerData.firstName,
+        lastName: customerData.lastName || "",
+        phone: customerData.phone || null,
+        acceptsMarketing: false
+      }
+    };
+    try {
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const createResult = result.data?.customerCreate;
+      if (createResult?.customerUserErrors && createResult.customerUserErrors.length > 0) {
+        throw new Error(`Customer creation errors: ${JSON.stringify(createResult.customerUserErrors)}`);
+      }
+      return createResult?.customer;
+    } catch (error) {
+      console.error("Error creating Shopify customer:", error);
+      throw error;
+    }
+  }
+  async createCustomerAccessToken(email, password) {
+    const mutation = `
+      mutation customerAccessTokenCreate($input: CustomerAccessTokenCreateInput!) {
+        customerAccessTokenCreate(input: $input) {
+          customerAccessToken {
+            accessToken
+            expiresAt
+          }
+          customerUserErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
+    const variables = {
+      input: {
+        email,
+        password
+      }
+    };
+    try {
+      console.log("\u{1F511} Creating customer access token for:", email);
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const tokenResult = result.data?.customerAccessTokenCreate;
+      if (tokenResult?.customerUserErrors && tokenResult.customerUserErrors.length > 0) {
+        console.error("\u274C Customer access token errors:", tokenResult.customerUserErrors);
+        throw new Error(`Access token creation errors: ${JSON.stringify(tokenResult.customerUserErrors)}`);
+      }
+      const accessTokenData = tokenResult?.customerAccessToken;
+      if (!accessTokenData) {
+        throw new Error("No access token returned from Shopify");
+      }
+      console.log("\u2705 Customer access token created successfully");
+      return accessTokenData;
+    } catch (error) {
+      console.error("\u274C Error creating customer access token:", error);
+      throw error;
+    }
+  }
+  async getCustomerWithAccessToken(accessToken) {
+    const query = `
+      query getCustomer($customerAccessToken: String!) {
+        customer(customerAccessToken: $customerAccessToken) {
+          id
+          email
+          firstName
+          lastName
+          phone
+          createdAt
+          updatedAt
+          orders(first: 50) {
+            edges {
+              node {
+                id
+                name
+                orderNumber
+                processedAt
+                totalPriceV2 {
+                  amount
+                  currencyCode
+                }
+                financialStatus
+                fulfillmentStatus
+                lineItems(first: 250) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      variant {
+                        id
+                        title
+                        priceV2 {
+                          amount
+                          currencyCode
+                        }
+                        image {
+                          url
+                          altText
+                        }
+                        product {
+                          id
+                          handle
+                          title
+                        }
+                      }
+                    }
+                  }
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  address1
+                  city
+                  province
+                  country
+                  zip
+                }
+                fulfillments {
+                  trackingInfo {
+                    number
+                    url
+                  }
+                  trackingCompany
+                  status
+                  createdAt
+                  updatedAt
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      customerAccessToken: accessToken
+    };
+    try {
+      console.log("\u{1F50D} Fetching customer data with access token");
+      const result = await this.makeStorefrontRequest(query, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const customer = result.data?.customer;
+      if (!customer) {
+        throw new Error("Customer not found or access token invalid");
+      }
+      console.log("\u2705 Customer data fetched successfully");
+      return customer;
+    } catch (error) {
+      console.error("\u274C Error fetching customer:", error);
+      throw error;
+    }
+  }
+  async getCustomerOrdersWithAccessToken(accessToken, options = {}) {
+    const { first = 10, after } = options;
+    const query = `
+      query getCustomerOrders($customerAccessToken: String!, $first: Int!, $after: String) {
+        customer(customerAccessToken: $customerAccessToken) {
+          id
+          email
+          firstName
+          lastName
+          orders(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            totalCount
+            edges {
+              cursor
+              node {
+                id
+                name
+                orderNumber
+                processedAt
+                totalPriceV2 {
+                  amount
+                  currencyCode
+                }
+                financialStatus
+                fulfillmentStatus
+                lineItems(first: 250) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      variant {
+                        id
+                        title
+                        priceV2 {
+                          amount
+                          currencyCode
+                        }
+                        image {
+                          url
+                          altText
+                        }
+                        product {
+                          id
+                          handle
+                          title
+                        }
+                      }
+                    }
+                  }
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  address1
+                  city
+                  province
+                  country
+                  zip
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      customerAccessToken: accessToken,
+      first,
+      ...after && { after }
+    };
+    try {
+      console.log("\u{1F50D} Fetching customer orders with access token", { first, after });
+      const result = await this.makeStorefrontRequest(query, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const customer = result.data?.customer;
+      if (!customer) {
+        throw new Error("Customer not found or access token invalid");
+      }
+      const ordersConnection = customer.orders;
+      const orders = ordersConnection.edges.map((edge) => edge.node);
+      console.log("\u2705 Customer orders fetched successfully", {
+        ordersCount: orders.length,
+        totalCount: ordersConnection.totalCount
+      });
+      return {
+        orders,
+        customer: {
+          id: customer.id,
+          email: customer.email,
+          firstName: customer.firstName,
+          lastName: customer.lastName
+        },
+        totalCount: ordersConnection.totalCount,
+        pageInfo: ordersConnection.pageInfo
+      };
+    } catch (error) {
+      console.error("\u274C Error fetching customer orders:", error);
+      throw error;
+    }
+  }
+  async renewCustomerAccessToken(accessToken) {
+    const mutation = `
+      mutation customerAccessTokenRenew($customerAccessToken: String!) {
+        customerAccessTokenRenew(customerAccessToken: $customerAccessToken) {
+          customerAccessToken {
+            accessToken
+            expiresAt
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const variables = {
+      customerAccessToken: accessToken
+    };
+    try {
+      console.log("\u{1F504} Renewing customer access token");
+      const result = await this.makeStorefrontRequest(mutation, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const renewResult = result.data?.customerAccessTokenRenew;
+      if (renewResult?.userErrors && renewResult.userErrors.length > 0) {
+        throw new Error(`Token renewal errors: ${JSON.stringify(renewResult.userErrors)}`);
+      }
+      const accessTokenData = renewResult?.customerAccessToken;
+      if (!accessTokenData) {
+        throw new Error("No renewed access token returned from Shopify");
+      }
+      console.log("\u2705 Customer access token renewed successfully");
+      return accessTokenData;
+    } catch (error) {
+      console.error("\u274C Error renewing customer access token:", error);
+      throw error;
+    }
+  }
+  // Enhanced Storefront API methods for product search and filtering
+  async searchProductsStorefront(options = {}) {
+    const {
+      query = "",
+      first = 20,
+      after,
+      sortKey = "RELEVANCE",
+      reverse = false,
+      productType,
+      vendor,
+      available,
+      priceMin,
+      priceMax
+    } = options;
+    let searchQuery = query;
+    const filters = [];
+    if (productType) {
+      filters.push(`product_type:${productType}`);
+    }
+    if (vendor) {
+      filters.push(`vendor:${vendor}`);
+    }
+    if (available !== void 0) {
+      filters.push(`available:${available}`);
+    }
+    if (priceMin !== void 0 || priceMax !== void 0) {
+      const priceFilter = [];
+      if (priceMin !== void 0) priceFilter.push(`>=${priceMin}`);
+      if (priceMax !== void 0) priceFilter.push(`<=${priceMax}`);
+      filters.push(`variants.price:${priceFilter.join(" AND ")}`);
+    }
+    if (filters.length > 0) {
+      searchQuery = searchQuery ? `${searchQuery} ${filters.join(" ")}` : filters.join(" ");
+    }
+    const graphqlQuery = `
+      query searchProducts($query: String!, $first: Int!, $after: String, $sortKey: ProductSortKeys!, $reverse: Boolean!) {
+        products(query: $query, first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+          }
+          edges {
+            cursor
+            node {
+              id
+              handle
+              title
+              description
+              productType
+              vendor
+              createdAt
+              updatedAt
+              tags
+              availableForSale
+              totalInventory
+              images(first: 5) {
+                edges {
+                  node {
+                    id
+                    url
+                    altText
+                    width
+                    height
+                  }
+                }
+              }
+              variants(first: 250) {
+                edges {
+                  node {
+                    id
+                    title
+                    priceV2 {
+                      amount
+                      currencyCode
+                    }
+                    compareAtPriceV2 {
+                      amount
+                      currencyCode
+                    }
+                    availableForSale
+                    quantityAvailable
+                    selectedOptions {
+                      name
+                      value
+                    }
+                    image {
+                      id
+                      url
+                      altText
+                    }
+                  }
+                }
+              }
+              options {
+                id
+                name
+                values
+              }
+              collections(first: 5) {
+                edges {
+                  node {
+                    id
+                    handle
+                    title
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      query: searchQuery,
+      first,
+      sortKey,
+      reverse,
+      ...after && { after }
+    };
+    try {
+      console.log("\u{1F50D} Searching products with query:", searchQuery);
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const productsConnection = result.data?.products;
+      if (!productsConnection) {
+        throw new Error("No products data returned from search");
+      }
+      const products = productsConnection.edges.map((edge) => edge.node);
+      const vendorSet = /* @__PURE__ */ new Set();
+      const productTypeSet = /* @__PURE__ */ new Set();
+      let minPrice = Infinity;
+      let maxPrice = 0;
+      products.forEach((product) => {
+        if (product.vendor) vendorSet.add(product.vendor);
+        if (product.productType) productTypeSet.add(product.productType);
+        product.variants.edges.forEach((variantEdge) => {
+          const price = parseFloat(variantEdge.node.priceV2.amount);
+          minPrice = Math.min(minPrice, price);
+          maxPrice = Math.max(maxPrice, price);
+        });
+      });
+      console.log("\u2705 Product search completed", {
+        productsCount: products.length,
+        vendors: Array.from(vendorSet),
+        productTypes: Array.from(productTypeSet)
+      });
+      return {
+        products,
+        totalCount: products.length,
+        // Note: Storefront API doesn't provide total count
+        pageInfo: productsConnection.pageInfo,
+        filters: {
+          availableVendors: Array.from(vendorSet),
+          availableProductTypes: Array.from(productTypeSet),
+          priceRange: {
+            min: minPrice === Infinity ? 0 : minPrice,
+            max: maxPrice
+          }
+        }
+      };
+    } catch (error) {
+      console.error("\u274C Error searching products:", error);
+      throw error;
+    }
+  }
+  async getCollectionProductsStorefront(collectionHandle, options = {}) {
+    const {
+      first = 20,
+      after,
+      sortKey = "COLLECTION_DEFAULT",
+      reverse = false,
+      filters = {}
+    } = options;
+    const graphqlQuery = `
+      query getCollectionProducts($handle: String!, $first: Int!, $after: String, $sortKey: ProductCollectionSortKeys!, $reverse: Boolean!) {
+        collection(handle: $handle) {
+          id
+          handle
+          title
+          description
+          image {
+            id
+            url
+            altText
+          }
+          products(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            edges {
+              cursor
+              node {
+                id
+                handle
+                title
+                description
+                productType
+                vendor
+                createdAt
+                updatedAt
+                tags
+                availableForSale
+                totalInventory
+                images(first: 5) {
+                  edges {
+                    node {
+                      id
+                      url
+                      altText
+                      width
+                      height
+                    }
+                  }
+                }
+                variants(first: 250) {
+                  edges {
+                    node {
+                      id
+                      title
+                      priceV2 {
+                        amount
+                        currencyCode
+                      }
+                      compareAtPriceV2 {
+                        amount
+                        currencyCode
+                      }
+                      availableForSale
+                      quantityAvailable
+                      selectedOptions {
+                        name
+                        value
+                      }
+                      image {
+                        id
+                        url
+                        altText
+                      }
+                    }
+                  }
+                }
+                options {
+                  id
+                  name
+                  values
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      handle: collectionHandle,
+      first,
+      sortKey,
+      reverse,
+      ...after && { after }
+    };
+    try {
+      console.log("\u{1F50D} Fetching collection products:", { collectionHandle, first, sortKey });
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const collection = result.data?.collection;
+      if (!collection) {
+        throw new Error("Collection not found");
+      }
+      let products = collection.products.edges.map((edge) => edge.node);
+      if (filters.available !== void 0) {
+        products = products.filter((product) => product.availableForSale === filters.available);
+      }
+      if (filters.productType) {
+        products = products.filter(
+          (product) => product.productType?.toLowerCase().includes(filters.productType.toLowerCase())
+        );
+      }
+      if (filters.vendor) {
+        products = products.filter(
+          (product) => product.vendor?.toLowerCase().includes(filters.vendor.toLowerCase())
+        );
+      }
+      if (filters.priceMin !== void 0 || filters.priceMax !== void 0) {
+        products = products.filter((product) => {
+          const price = parseFloat(product.variants.edges[0]?.node.priceV2.amount || "0");
+          const meetsMin = filters.priceMin === void 0 || price >= filters.priceMin;
+          const meetsMax = filters.priceMax === void 0 || price <= filters.priceMax;
+          return meetsMin && meetsMax;
+        });
+      }
+      const allProducts = collection.products.edges.map((edge) => edge.node);
+      const vendorSet = /* @__PURE__ */ new Set();
+      const productTypeSet = /* @__PURE__ */ new Set();
+      let minPrice = Infinity;
+      let maxPrice = 0;
+      allProducts.forEach((product) => {
+        if (product.vendor) vendorSet.add(product.vendor);
+        if (product.productType) productTypeSet.add(product.productType);
+        product.variants.edges.forEach((variantEdge) => {
+          const price = parseFloat(variantEdge.node.priceV2.amount);
+          minPrice = Math.min(minPrice, price);
+          maxPrice = Math.max(maxPrice, price);
+        });
+      });
+      console.log("\u2705 Collection products fetched successfully", {
+        collection: collection.title,
+        totalProducts: allProducts.length,
+        filteredProducts: products.length,
+        vendors: Array.from(vendorSet),
+        productTypes: Array.from(productTypeSet)
+      });
+      return {
+        collection: {
+          id: collection.id,
+          handle: collection.handle,
+          title: collection.title,
+          description: collection.description,
+          image: collection.image?.url
+        },
+        products,
+        pageInfo: {
+          ...collection.products.pageInfo
+          // Note: pageInfo might not be accurate after client-side filtering
+        },
+        filters: {
+          availableVendors: Array.from(vendorSet),
+          availableProductTypes: Array.from(productTypeSet),
+          priceRange: {
+            min: minPrice === Infinity ? 0 : minPrice,
+            max: maxPrice
+          }
+        }
+      };
+    } catch (error) {
+      console.error("\u274C Error fetching collection products:", error);
+      throw error;
+    }
+  }
+  async getProductRecommendations(productId, intent = "RELATED") {
+    const graphqlQuery = `
+      query getProductRecommendations($productId: ID!, $intent: ProductRecommendationIntent!) {
+        productRecommendations(productId: $productId, intent: $intent) {
+          id
+          handle
+          title
+          description
+          productType
+          vendor
+          availableForSale
+          images(first: 3) {
+            edges {
+              node {
+                id
+                url
+                altText
+              }
+            }
+          }
+          variants(first: 5) {
+            edges {
+              node {
+                id
+                title
+                priceV2 {
+                  amount
+                  currencyCode
+                }
+                compareAtPriceV2 {
+                  amount
+                  currencyCode
+                }
+                availableForSale
+              }
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      productId,
+      intent
+    };
+    try {
+      console.log("\u{1F50D} Fetching product recommendations");
+      const result = await this.makeStorefrontRequest(graphqlQuery, variables);
+      if (result.errors) {
+        throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
+      }
+      const recommendations = result.data?.productRecommendations || [];
+      console.log("\u2705 Product recommendations fetched successfully", {
+        count: recommendations.length
+      });
+      return recommendations;
+    } catch (error) {
+      console.error("\u274C Error fetching product recommendations:", error);
+      throw error;
+    }
   }
 };
 var shopify_service_default = new ShopifyService();
@@ -1291,6 +2388,204 @@ var getProductByHandle = async (req, res) => {
     );
   }
 };
+var searchProducts = async (req, res) => {
+  try {
+    const {
+      query = "",
+      limit = 20,
+      after,
+      sortKey = "RELEVANCE",
+      reverse = false,
+      productType,
+      vendor,
+      available,
+      priceMin,
+      priceMax
+    } = req.query;
+    console.log("\u{1F50D} Product search request:", {
+      query,
+      limit: parseInt(limit),
+      sortKey,
+      filters: { productType, vendor, available, priceMin, priceMax }
+    });
+    const searchOptions = {
+      query,
+      first: parseInt(limit),
+      ...after && { after },
+      sortKey,
+      reverse: reverse === "true",
+      ...productType && { productType },
+      ...vendor && { vendor },
+      ...available !== void 0 && { available: available === "true" },
+      ...priceMin && { priceMin: parseFloat(priceMin) },
+      ...priceMax && { priceMax: parseFloat(priceMax) }
+    };
+    const searchResults = await shopify_service_default.searchProductsStorefront(searchOptions);
+    return sendResponse(res, 200, "Products search completed successfully", searchResults);
+  } catch (error) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to search products",
+      void 0,
+      error.message
+    );
+  }
+};
+var getCollectionProductsFiltered = async (req, res) => {
+  try {
+    const { handle } = req.params;
+    const {
+      limit = 20,
+      after,
+      sortKey = "COLLECTION_DEFAULT",
+      reverse = false,
+      available,
+      priceMin,
+      priceMax,
+      productType,
+      vendor
+    } = req.query;
+    console.log("\u{1F50D} Collection products filter request:", {
+      handle,
+      limit: parseInt(limit),
+      sortKey,
+      filters: { available, priceMin, priceMax, productType, vendor }
+    });
+    const filterOptions = {
+      first: parseInt(limit),
+      ...after && { after },
+      sortKey,
+      reverse: reverse === "true",
+      filters: {
+        ...available !== void 0 && { available: available === "true" },
+        ...priceMin && { priceMin: parseFloat(priceMin) },
+        ...priceMax && { priceMax: parseFloat(priceMax) },
+        ...productType && { productType },
+        ...vendor && { vendor }
+      }
+    };
+    const collectionData = await shopify_service_default.getCollectionProductsStorefront(handle, filterOptions);
+    return sendResponse(res, 200, "Collection products retrieved successfully", collectionData);
+  } catch (error) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch filtered collection products",
+      void 0,
+      error.message
+    );
+  }
+};
+var getProductRecommendations = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { intent = "RELATED" } = req.query;
+    console.log("\u{1F50D} Product recommendations request:", { productId: id, intent });
+    const recommendations = await shopify_service_default.getProductRecommendations(
+      id,
+      intent
+    );
+    return sendResponse(res, 200, "Product recommendations retrieved successfully", recommendations);
+  } catch (error) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch product recommendations",
+      void 0,
+      error.message
+    );
+  }
+};
+var getProductFilters = async (req, res) => {
+  try {
+    const { collection } = req.query;
+    console.log("\u{1F50D} Getting product filters for collection:", collection);
+    let filterData;
+    if (collection) {
+      const collectionData = await shopify_service_default.getCollectionProductsStorefront(
+        collection,
+        { first: 250 }
+        // Get more products to extract comprehensive filter options
+      );
+      filterData = collectionData.filters;
+    } else {
+      const searchResults = await shopify_service_default.searchProductsStorefront({
+        query: "",
+        first: 250
+      });
+      filterData = searchResults.filters;
+    }
+    return sendResponse(res, 200, "Product filters retrieved successfully", filterData);
+  } catch (error) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch product filters",
+      void 0,
+      error.message
+    );
+  }
+};
+var getUserOrders = async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    console.log(`\u{1F510} [getUserOrders] Authenticated user:`, {
+      user_id: req.user._id,
+      email: userEmail,
+      name: req.user.name,
+      role: req.user.role
+    });
+    if (!userEmail) {
+      console.log(`\u274C [getUserOrders] No email found for authenticated user`);
+      return sendResponse(res, 400, "User email not found");
+    }
+    const User = (init_user_model(), __toCommonJS(user_model_exports)).default;
+    const user = await User.findById(req.user._id);
+    if (!user || !user.shopify?.customerAccessToken) {
+      console.log(`\u274C [getUserOrders] No Shopify customer access token found for user`);
+      return sendResponse(res, 400, "Shopify customer access token not found. Please re-login to connect your account.");
+    }
+    const now = /* @__PURE__ */ new Date();
+    const tokenExpired = !user.shopify.customerAccessTokenExpiresAt || user.shopify.customerAccessTokenExpiresAt <= now;
+    if (tokenExpired) {
+      console.log(`\u274C [getUserOrders] Customer access token expired`);
+      return sendResponse(res, 401, "Customer access token expired. Please re-login to refresh your session.");
+    }
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    console.log(`\u{1F4CB} [getUserOrders] Request parameters:`, {
+      page,
+      limit,
+      userEmail,
+      hasToken: !!user.shopify.customerAccessToken,
+      tokenExpires: user.shopify.customerAccessTokenExpiresAt
+    });
+    const ordersData = await shopify_service_default.getCustomerOrdersWithAccessToken(
+      user.shopify.customerAccessToken,
+      {
+        first: limit
+        // Note: Storefront API uses cursor-based pagination, not page-based
+        // For simplicity, we'll fetch orders without cursor pagination for now
+      }
+    );
+    console.log(`\u{1F4E6} [getUserOrders] Orders data retrieved:`, {
+      orders_count: ordersData.orders.length,
+      customer: ordersData.customer,
+      total_count: ordersData.totalCount
+    });
+    return sendResponse(res, 200, "User orders retrieved successfully", ordersData);
+  } catch (error) {
+    console.error(`\u274C [getUserOrders] Error:`, error);
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch user orders",
+      void 0,
+      error.message
+    );
+  }
+};
 
 // src/controllers/webhook.controller.ts
 var orderCreated = async (req, res) => {
@@ -1358,86 +2653,9 @@ var validateShopifyWebhook = (req, res, next) => {
     res.status(500).json({ error: "Failed to validate webhook" });
   }
 };
-var EUserRole = /* @__PURE__ */ ((EUserRole3) => {
-  EUserRole3["client"] = "client";
-  EUserRole3["admin"] = "admin";
-  EUserRole3["superAdmin"] = "super_admin";
-  return EUserRole3;
-})(EUserRole || {});
-var UserSchema = new mongoose6.Schema({
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-    trim: true
-  },
-  password: {
-    type: String,
-    required: true,
-    minlength: 6
-  },
-  address: {
-    street: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    city: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    state: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    zip: {
-      type: String,
-      trim: true,
-      required: false
-    },
-    country: {
-      type: String,
-      trim: true,
-      required: false
-    }
-  },
-  role: {
-    type: String,
-    enum: Object.values(EUserRole),
-    default: "client" /* client */
-  },
-  name: {
-    type: String,
-    required: true
-  },
-  phone: {
-    type: String,
-    trim: true
-  },
-  verified: {
-    type: Boolean,
-    default: false
-  }
-}, { timestamps: true });
-UserSchema.pre("save", async function(next) {
-  if (!this.isModified("password")) return next();
-  try {
-    const salt = await bcrypt__default.default.genSalt(10);
-    this.password = await bcrypt__default.default.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-UserSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt__default.default.compare(candidatePassword, this.password);
-};
-var user_model_default = mongoose6__default.default.model("User", UserSchema);
 
 // src/middleware/auth.middleware.ts
+init_user_model();
 var validateUserAccess = async (req, res, next) => {
   try {
     let token = req.cookies.token || req.header("Authorization")?.replace("Bearer ", "");
@@ -1522,7 +2740,10 @@ var shopifyRouter = express7.Router();
 shopifyRouter.post("/auth/callback", handleAuthCallback);
 shopifyRouter.get("/auth/status", checkAuthStatus);
 shopifyRouter.get("/products", getProducts);
+shopifyRouter.get("/products/search", searchProducts);
+shopifyRouter.get("/products/filters", getProductFilters);
 shopifyRouter.get("/products/:id", getProduct);
+shopifyRouter.get("/products/:id/recommendations", getProductRecommendations);
 shopifyRouter.get(
   "/products/handle/:handle",
   getProductByHandle
@@ -1548,6 +2769,7 @@ shopifyRouter.get(
 );
 shopifyRouter.get("/orders", getOrders);
 shopifyRouter.get("/orders/:id", getOrder);
+shopifyRouter.get("/orders/user/my-orders", validateUserAccess, getUserOrders);
 shopifyRouter.post(
   "/orders",
   createOrder
@@ -1600,6 +2822,10 @@ shopifyRouter.get("/collections/:id", getCollection);
 shopifyRouter.get(
   "/collections/handle/:handle",
   getCollectionByHandle
+);
+shopifyRouter.get(
+  "/collections/handle/:handle/products",
+  getCollectionProductsFiltered
 );
 shopifyRouter.get(
   "/collections/:id/products",
@@ -1671,6 +2897,659 @@ shopifyRouter.get(
   generateSalesReport
 );
 var shopify_routes_default = shopifyRouter;
+
+// src/controllers/auth.controller.ts
+init_user_model();
+var OtpSchema = new mongoose7.Schema({
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  otp: {
+    type: String,
+    required: true,
+    length: 6
+  },
+  expiresAt: {
+    type: Date,
+    required: true,
+    default: () => new Date(Date.now() + 10 * 60 * 1e3)
+    // 10 minutes from now
+  }
+}, {
+  timestamps: true
+});
+OtpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+OtpSchema.statics.generateOTP = function() {
+  return Math.floor(1e5 + Math.random() * 9e5).toString();
+};
+OtpSchema.methods.isExpired = function() {
+  return /* @__PURE__ */ new Date() > this.expiresAt;
+};
+var otp_model_default = mongoose7__default.default.model("Otp", OtpSchema);
+var createTransporter = () => {
+  return nodemailer__default.default.createTransport({
+    host: process.env.SMTP_HOST || "email-smtp.eu-north-1.amazonaws.com",
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: false,
+    // true for 465, false for other ports like 587
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    },
+    tls: {
+      rejectUnauthorized: false
+      // For development, set to true in production
+    }
+  });
+};
+var emailTemplates = {
+  ["EMAIL_VERIFICATION_OTP" /* EMAIL_VERIFICATION_OTP */]: (data) => ({
+    subject: "Verify Your Email Address",
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .otp-code { background: #e7f3ff; border: 2px dashed #007bff; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
+            .otp-number { font-size: 32px; font-weight: bold; color: #007bff; letter-spacing: 5px; }
+            .button { display: inline-block; background: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F510} Email Verification</h1>
+            <p>Please verify your email address to continue</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for signing up with ${data.companyName || "Lines Apparel"}! To complete your registration, please use the verification code below:</p>
+            
+            <div class="otp-code">
+                <p>Your verification code is:</p>
+                <div class="otp-number">${data.otp}</div>
+                <p><small>This code will expire in ${data.expiryMinutes} minutes</small></p>
+            </div>
+            
+            <p>If you didn't request this verification, please ignore this email.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Email Verification
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for signing up with ${data.companyName || "Lines Apparel"}! To complete your registration, please use the verification code below:
+    
+    Your verification code: ${data.otp}
+    
+    This code will expire in ${data.expiryMinutes} minutes.
+    
+    If you didn't request this verification, please ignore this email.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["WELCOME_EMAIL" /* WELCOME_EMAIL */]: (data) => ({
+    subject: `Welcome to ${data.companyName || "Lines Apparel"}!`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .button { display: inline-block; background: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F389} Welcome to ${data.companyName || "Lines Apparel"}!</h1>
+            <p>We're excited to have you on board</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Welcome to ${data.companyName || "Lines Apparel"}! Your email has been successfully verified and your account is now active.</p>
+            
+            <p>Here's what you can do next:</p>
+            <ul>
+                <li>Browse our latest collection</li>
+                <li>Set up your profile and preferences</li>
+                <li>Start shopping and enjoy exclusive member benefits</li>
+            </ul>
+            
+            <div style="text-align: center;">
+                <a href="${data.websiteUrl || "https://linesapparel.ca"}" class="button">Start Shopping</a>
+            </div>
+            
+            <p>If you have any questions, feel free to reach out to our support team.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Welcome to ${data.companyName || "Lines Apparel"}!
+    
+    Hello ${data.recipientName || "there"},
+    
+    Welcome to ${data.companyName || "Lines Apparel"}! Your email has been successfully verified and your account is now active.
+    
+    Here's what you can do next:
+    - Browse our latest collection
+    - Set up your profile and preferences
+    - Start shopping and enjoy exclusive member benefits
+    
+    Visit us at: ${data.websiteUrl || "https://linesapparel.ca"}
+    
+    If you have any questions, feel free to reach out to our support team.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["FORGOT_PASSWORD_OTP" /* FORGOT_PASSWORD_OTP */]: (data) => ({
+    subject: "Reset Your Password",
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Reset</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .otp-code { background: #fff3cd; border: 2px dashed #ffc107; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
+            .otp-number { font-size: 32px; font-weight: bold; color: #dc3545; letter-spacing: 5px; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F511} Password Reset</h1>
+            <p>Reset your password securely</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>We received a request to reset your password for your ${data.companyName || "Lines Apparel"} account.</p>
+            
+            <div class="otp-code">
+                <p>Your password reset code is:</p>
+                <div class="otp-number">${data.otp}</div>
+                <p><small>This code will expire in ${data.expiryMinutes} minutes</small></p>
+            </div>
+            
+            <p><strong>Important:</strong> If you didn't request this password reset, please ignore this email and ensure your account is secure.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Password Reset
+    
+    Hello ${data.recipientName || "there"},
+    
+    We received a request to reset your password for your ${data.companyName || "Lines Apparel"} account.
+    
+    Your password reset code: ${data.otp}
+    
+    This code will expire in ${data.expiryMinutes} minutes.
+    
+    Important: If you didn't request this password reset, please ignore this email and ensure your account is secure.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["PASSWORD_RESET_SUCCESS" /* PASSWORD_RESET_SUCCESS */]: (data) => ({
+    subject: "Password Reset Successful",
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Reset Successful</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u2705 Password Reset Successful</h1>
+            <p>Your password has been updated</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Your password for ${data.companyName || "Lines Apparel"} has been successfully reset.</p>
+            
+            <p>You can now log in with your new password. If you didn't make this change, please contact our support team immediately.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Password Reset Successful
+    
+    Hello ${data.recipientName || "there"},
+    
+    Your password for ${data.companyName || "Lines Apparel"} has been successfully reset.
+    
+    You can now log in with your new password. If you didn't make this change, please contact our support team immediately.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["ORDER_CONFIRMATION" /* ORDER_CONFIRMATION */]: (data) => ({
+    subject: `Order Confirmation - ${data.orderNumber}`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Order Confirmation</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #6f42c1 0%, #007bff 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .order-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #007bff; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F6CD}\uFE0F Order Confirmed!</h1>
+            <p>Thank you for your purchase</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for your order! We've received your order and are processing it now.</p>
+            
+            <div class="order-details">
+                <h3>Order Details</h3>
+                <p><strong>Order Number:</strong> ${data.orderNumber}</p>
+                <p><strong>Order Date:</strong> ${data.orderDate}</p>
+                <p><strong>Total Amount:</strong> ${data.orderTotal}</p>
+            </div>
+            
+            <p>You'll receive another email when your order ships with tracking information.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Order Confirmed!
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for your order! We've received your order and are processing it now.
+    
+    Order Details:
+    Order Number: ${data.orderNumber}
+    Order Date: ${data.orderDate}
+    Total Amount: ${data.orderTotal}
+    
+    You'll receive another email when your order ships with tracking information.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["ORDER_SHIPPED" /* ORDER_SHIPPED */]: (data) => ({
+    subject: `Your Order ${data.orderNumber} Has Shipped!`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Order Shipped</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .shipping-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F4E6} Your Order Has Shipped!</h1>
+            <p>Your package is on its way</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Great news! Your order has been shipped and is on its way to you.</p>
+            
+            <div class="shipping-details">
+                <h3>Shipping Details</h3>
+                <p><strong>Order Number:</strong> ${data.orderNumber}</p>
+                ${data.trackingNumber ? `<p><strong>Tracking Number:</strong> ${data.trackingNumber}</p>` : ""}
+                ${data.estimatedDelivery ? `<p><strong>Estimated Delivery:</strong> ${data.estimatedDelivery}</p>` : ""}
+            </div>
+            
+            <p>You can track your package using the tracking number provided above.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Your Order Has Shipped!
+    
+    Hello ${data.recipientName || "there"},
+    
+    Great news! Your order has been shipped and is on its way to you.
+    
+    Shipping Details:
+    Order Number: ${data.orderNumber}
+    ${data.trackingNumber ? `Tracking Number: ${data.trackingNumber}` : ""}
+    ${data.estimatedDelivery ? `Estimated Delivery: ${data.estimatedDelivery}` : ""}
+    
+    You can track your package using the tracking number provided above.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["INQUIRY_RECEIVED" /* INQUIRY_RECEIVED */]: (data) => ({
+    subject: `We've Received Your Inquiry - ${data.inquiryId}`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Inquiry Received</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #17a2b8 0%, #6f42c1 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .inquiry-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #17a2b8; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u{1F4AC} Inquiry Received</h1>
+            <p>We'll get back to you soon</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for contacting ${data.companyName || "Lines Apparel"}! We've received your inquiry and will respond as soon as possible.</p>
+            
+            <div class="inquiry-details">
+                <h3>Your Inquiry</h3>
+                <p><strong>Inquiry ID:</strong> ${data.inquiryId}</p>
+                <p><strong>Subject:</strong> ${data.inquirySubject}</p>
+                ${data.inquiryMessage ? `<p><strong>Message:</strong> ${data.inquiryMessage}</p>` : ""}
+            </div>
+            
+            <p>We typically respond within 24 hours during business days. For urgent matters, please call our support line.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Inquiry Received
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for contacting ${data.companyName || "Lines Apparel"}! We've received your inquiry and will respond as soon as possible.
+    
+    Your Inquiry:
+    Inquiry ID: ${data.inquiryId}
+    Subject: ${data.inquirySubject}
+    ${data.inquiryMessage ? `Message: ${data.inquiryMessage}` : ""}
+    
+    We typically respond within 24 hours during business days. For urgent matters, please call our support line.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  }),
+  ["INQUIRY_RESPONSE" /* INQUIRY_RESPONSE */]: (data) => ({
+    subject: `Response to Your Inquiry - ${data.inquiryId}`,
+    html: `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Inquiry Response</title>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #28a745 0%, #17a2b8 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+            .response-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>\u2709\uFE0F Response to Your Inquiry</h1>
+            <p>We're here to help</p>
+        </div>
+        <div class="content">
+            <p>Hello ${data.recipientName || "there"},</p>
+            <p>Thank you for your patience. Here's our response to your inquiry:</p>
+            
+            <div class="response-details">
+                <h3>Original Inquiry</h3>
+                <p><strong>Inquiry ID:</strong> ${data.inquiryId}</p>
+                <p><strong>Subject:</strong> ${data.inquirySubject}</p>
+                
+                <h3>Our Response</h3>
+                <p>${data.responseMessage}</p>
+            </div>
+            
+            <p>If you have any follow-up questions, please don't hesitate to contact us again.</p>
+            
+            <p>Best regards,<br>
+            The ${data.companyName || "Lines Apparel"} Team</p>
+        </div>
+        <div class="footer">
+            <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.</p>
+            <p>Need help? Contact us at <a href="mailto:${data.supportEmail || "support@linesapparel.ca"}">${data.supportEmail || "support@linesapparel.ca"}</a></p>
+        </div>
+    </body>
+    </html>
+    `,
+    text: `
+    Response to Your Inquiry
+    
+    Hello ${data.recipientName || "there"},
+    
+    Thank you for your patience. Here's our response to your inquiry:
+    
+    Original Inquiry:
+    Inquiry ID: ${data.inquiryId}
+    Subject: ${data.inquirySubject}
+    
+    Our Response:
+    ${data.responseMessage}
+    
+    If you have any follow-up questions, please don't hesitate to contact us again.
+    
+    Best regards,
+    The ${data.companyName || "Lines Apparel"} Team
+    
+    \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} ${data.companyName || "Lines Apparel"}. All rights reserved.
+    Need help? Contact us at ${data.supportEmail || "support@linesapparel.ca"}
+    `
+  })
+};
+async function sendEmail(options) {
+  try {
+    const transporter = createTransporter();
+    const template = emailTemplates[options.templateType];
+    if (!template) {
+      throw new Error(`Unknown email template: ${options.templateType}`);
+    }
+    const { subject, html, text } = template(options.templateData);
+    const mailOptions = {
+      from: options.from || process.env.FROM_EMAIL_NO_REPLY || "noreply@linesapparel.ca",
+      to: options.to,
+      subject,
+      html,
+      text,
+      ...options.replyTo && { replyTo: options.replyTo },
+      ...options.cc && { cc: options.cc },
+      ...options.bcc && { bcc: options.bcc }
+    };
+    console.log(`\u{1F4E7} Sending email to ${options.to} with template ${options.templateType}`);
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`\u2705 Email sent successfully: ${result.messageId}`);
+    return {
+      success: true,
+      messageId: result.messageId
+    };
+  } catch (error) {
+    console.error("\u274C Error sending email:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred"
+    };
+  }
+}
+async function sendOTPEmail(email, otp, name, expiryMinutes = 10) {
+  return sendEmail({
+    to: email,
+    templateType: "EMAIL_VERIFICATION_OTP" /* EMAIL_VERIFICATION_OTP */,
+    templateData: {
+      recipientEmail: email,
+      recipientName: name,
+      otp,
+      expiryMinutes,
+      companyName: "Lines Apparel",
+      supportEmail: process.env.FROM_EMAIL_NO_REPLY || "support@linesapparel.ca",
+      websiteUrl: "https://linesapparel.ca"
+    }
+  });
+}
+async function sendForgotPasswordOTP(email, otp, name, expiryMinutes = 10) {
+  return sendEmail({
+    to: email,
+    templateType: "FORGOT_PASSWORD_OTP" /* FORGOT_PASSWORD_OTP */,
+    templateData: {
+      recipientEmail: email,
+      recipientName: name,
+      otp,
+      expiryMinutes,
+      companyName: "Lines Apparel",
+      supportEmail: process.env.FROM_EMAIL_NO_REPLY || "support@linesapparel.ca",
+      websiteUrl: "https://linesapparel.ca"
+    }
+  });
+}
+async function sendPasswordResetSuccess(email, name) {
+  return sendEmail({
+    to: email,
+    templateType: "PASSWORD_RESET_SUCCESS" /* PASSWORD_RESET_SUCCESS */,
+    templateData: {
+      recipientEmail: email,
+      recipientName: name,
+      companyName: "Lines Apparel",
+      supportEmail: process.env.FROM_EMAIL_NO_REPLY || "support@linesapparel.ca",
+      websiteUrl: "https://linesapparel.ca"
+    }
+  });
+}
+
+// src/controllers/auth.controller.ts
 var sendTokenResponse = (user, statusCode, res, req) => {
   const userAgent = req.headers["user-agent"] || "unknown";
   const ipAddress = req.ip || req.connection.remoteAddress || "unknown";
@@ -1693,14 +3572,15 @@ var sendTokenResponse = (user, statusCode, res, req) => {
       // Longer expiry time to prevent frequent auth issues
     }
   );
+  const isProduction = process.env.NODE_ENV === "production";
   const cookieOptions = {
     expires: new Date(Date.now() + 24 * 60 * 60 * 1e3),
     // 24 hours
     httpOnly: true,
-    secure: true,
-    // Required for SameSite=None
-    sameSite: "none",
-    // Allow cross-site cookies in both environments
+    secure: isProduction,
+    // Only secure in production (HTTPS)
+    sameSite: isProduction ? "none" : "lax",
+    // 'none' for cross-site in prod, 'lax' for same-site in dev
     path: "/"
     // Ensure cookie is sent for all paths
   };
@@ -1713,7 +3593,9 @@ var sendTokenResponse = (user, statusCode, res, req) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      role: user.role
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
     }
   });
 };
@@ -1732,14 +3614,88 @@ var register = async (req, res) => {
         return;
       }
     }
+    const nameParts = name.trim().split(" ");
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(" ") || "";
+    console.log("\u{1F6CD}\uFE0F Creating Shopify customer for:", email);
+    let shopifyCustomer;
+    let customerAccessToken;
+    try {
+      shopifyCustomer = await shopify_service_default.createStorefrontCustomer({
+        email,
+        password,
+        firstName,
+        lastName,
+        phone
+      });
+      if (!shopifyCustomer?.id) {
+        throw new Error("Shopify customer creation failed or was throttled");
+      }
+      const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
+      customerAccessToken = tokenData;
+    } catch (shopifyError) {
+      if (shopifyError.message && shopifyError.message.includes("THROTTLED")) {
+        return res.status(429).json({
+          success: false,
+          message: "Too many signups. Please try again in a few minutes."
+        });
+      }
+      console.error("\u274C Shopify customer creation failed:", shopifyError.message);
+      return res.status(500).json({
+        success: false,
+        message: "Shopify customer creation failed. Please try again later."
+      });
+    }
     const user = await user_model_default.create({
       name,
       email,
       password,
-      ...phone ? { phone } : {}
+      verified: false,
+      ...phone ? { phone } : {},
+      shopify: shopifyCustomer?.id && customerAccessToken ? {
+        customerId: shopifyCustomer.id,
+        customerAccessToken: customerAccessToken.accessToken,
+        customerAccessTokenExpiresAt: new Date(customerAccessToken.expiresAt)
+      } : {}
     });
-    sendTokenResponse(user, 201, res, req);
+    console.log("\u2705 User created with Shopify integration");
+    const otpCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+    let otpRecord = await otp_model_default.findOne({ email });
+    if (otpRecord) {
+      otpRecord.otp = otpCode;
+      otpRecord.expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
+      await otpRecord.save();
+      console.log("\u2705 OTP updated for existing email");
+    } else {
+      otpRecord = await otp_model_default.create({
+        email,
+        otp: otpCode,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1e3)
+        // 10 minutes
+      });
+      console.log("\u2705 New OTP created");
+    }
+    try {
+      const emailResult = await sendOTPEmail(email, otpCode, name, 10);
+      if (emailResult.success) {
+        console.log("\u2705 OTP email sent successfully");
+      } else {
+        console.error("\u274C Failed to send OTP email:", emailResult.error);
+      }
+    } catch (emailError) {
+      console.error("\u274C Email sending error:", emailError.message);
+    }
+    res.status(201).json({
+      success: true,
+      message: "Registration successful! Please check your email for verification code.",
+      data: {
+        email: user.email,
+        name: user.name,
+        verified: user.verified
+      }
+    });
   } catch (error) {
+    console.error("\u274C Registration failed:", error);
     res.status(500).json({ message: "Registration failed", error: error.message });
   }
 };
@@ -1761,19 +3717,43 @@ var login = async (req, res) => {
         res.status(401).json({ message: "Invalid credentials" });
         return;
       }
+      console.log("\u{1F510} User authenticated, getting Shopify customer access token");
+      let customerAccessToken = user.shopify?.customerAccessToken;
+      let tokenExpiresAt = user.shopify?.customerAccessTokenExpiresAt;
+      const now = /* @__PURE__ */ new Date();
+      const tokenExpired = !tokenExpiresAt || tokenExpiresAt <= now;
+      if (!customerAccessToken || tokenExpired) {
+        console.log("\u{1F504} Creating new customer access token");
+        try {
+          const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
+          customerAccessToken = tokenData.accessToken;
+          tokenExpiresAt = new Date(tokenData.expiresAt);
+          await user_model_default.findByIdAndUpdate(user._id, {
+            "shopify.customerAccessToken": customerAccessToken,
+            "shopify.customerAccessTokenExpiresAt": tokenExpiresAt
+          });
+          console.log("\u2705 New customer access token created and saved");
+        } catch (shopifyError) {
+          console.error("\u274C Failed to get Shopify customer access token:", shopifyError);
+        }
+      } else {
+        console.log("\u2705 Using existing valid customer access token");
+      }
       sendTokenResponse(user, 200, res, req);
     } catch (error) {
       res.status(401).json({ message: "Invalid credentials" });
     }
   } catch (error) {
+    console.error("\u274C Login failed:", error);
     res.status(500).json({ message: "Login failed", error: error.message });
   }
 };
 var logout = (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
   const cookieOptions = {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
     path: "/"
   };
   res.clearCookie("token", cookieOptions);
@@ -1799,7 +3779,9 @@ var getCurrentUser = async (req, res) => {
         phone: req.user.phone,
         role: req.user.role,
         verified: req.user.verified,
-        address: req.user.address || null
+        address: req.user.address || null,
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt
       }
     });
   } catch (error) {
@@ -1879,18 +3861,345 @@ var changePassword = async (req, res) => {
     res.status(500).json({ message: "Password change failed", error: error.message });
   }
 };
+var verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      res.status(400).json({
+        success: false,
+        message: "Please provide both email and OTP"
+      });
+      return;
+    }
+    const otpRecord = await otp_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!otpRecord) {
+      res.status(400).json({
+        success: false,
+        message: "OTP not found. Please request a new verification code."
+      });
+      return;
+    }
+    if (otpRecord.isExpired()) {
+      await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
+      res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new verification code."
+      });
+      return;
+    }
+    if (otpRecord.otp !== otp) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid OTP. Please try again."
+      });
+      return;
+    }
+    const user = await user_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+      return;
+    }
+    user.verified = true;
+    await user.save();
+    await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
+    console.log("\u2705 User email verified successfully:", email);
+    sendTokenResponse(user, 200, res, req);
+  } catch (error) {
+    console.error("\u274C OTP verification failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "OTP verification failed",
+      error: error.message
+    });
+  }
+};
+var resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({
+        success: false,
+        message: "Please provide email address"
+      });
+      return;
+    }
+    const user = await user_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+      return;
+    }
+    if (user.verified) {
+      res.status(400).json({
+        success: false,
+        message: "Email is already verified"
+      });
+      return;
+    }
+    const otpCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+    const otpRecord = await otp_model_default.findOneAndUpdate(
+      { email: email.toLowerCase().trim() },
+      {
+        otp: otpCode,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1e3)
+        // 10 minutes
+      },
+      {
+        upsert: true,
+        new: true
+      }
+    );
+    try {
+      const emailResult = await sendOTPEmail(email, otpCode, user.name, 10);
+      if (emailResult.success) {
+        console.log("\u2705 OTP resent successfully to:", email);
+        res.status(200).json({
+          success: true,
+          message: "Verification code sent successfully! Please check your email."
+        });
+      } else {
+        console.error("\u274C Failed to resend OTP email:", emailResult.error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to send verification email. Please try again."
+        });
+      }
+    } catch (emailError) {
+      console.error("\u274C Email sending error:", emailError.message);
+      res.status(500).json({
+        success: false,
+        message: "Failed to send verification email. Please try again."
+      });
+    }
+  } catch (error) {
+    console.error("\u274C Resend OTP failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to resend OTP",
+      error: error.message
+    });
+  }
+};
+var forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({
+        success: false,
+        message: "Email is required"
+      });
+      return;
+    }
+    const user = await user_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      res.status(200).json({
+        success: true,
+        data: {
+          message: "If an account with this email exists, you will receive a password reset code."
+        }
+      });
+      return;
+    }
+    const otpCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+    let otpRecord = await otp_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (otpRecord) {
+      otpRecord.otp = otpCode;
+      otpRecord.expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
+      await otpRecord.save();
+    } else {
+      otpRecord = await otp_model_default.create({
+        email: email.toLowerCase().trim(),
+        otp: otpCode
+      });
+    }
+    try {
+      const emailResult = await sendForgotPasswordOTP(user.email, otpCode, user.name, 10);
+      if (emailResult.success) {
+        console.log("\u2705 Forgot password OTP sent successfully to:", user.email);
+      } else {
+        console.error("\u274C Failed to send forgot password email:", emailResult.error);
+      }
+    } catch (emailError) {
+      console.error("\u274C Failed to send forgot password email:", emailError);
+    }
+    res.status(200).json({
+      success: true,
+      data: {
+        message: "If an account with this email exists, you will receive a password reset code."
+      }
+    });
+  } catch (error) {
+    console.error("\u274C Forgot password failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to process forgot password request",
+      error: error.message
+    });
+  }
+};
+var verifyForgotPasswordOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      res.status(400).json({
+        success: false,
+        message: "Email and OTP are required"
+      });
+      return;
+    }
+    const otpRecord = await otp_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!otpRecord) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP"
+      });
+      return;
+    }
+    if (otpRecord.isExpired()) {
+      await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
+      res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new one."
+      });
+      return;
+    }
+    if (otpRecord.otp !== otp) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid OTP"
+      });
+      return;
+    }
+    const user = await user_model_default.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+      return;
+    }
+    const resetToken = jwt__default.default.sign(
+      {
+        userId: user._id,
+        email: user.email,
+        purpose: "password-reset",
+        timestamp: Date.now()
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      {
+        expiresIn: "15m"
+      }
+    );
+    await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
+    console.log("\u2705 Forgot password OTP verified successfully for:", email);
+    res.status(200).json({
+      success: true,
+      data: {
+        message: "OTP verified successfully",
+        resetToken
+      }
+    });
+  } catch (error) {
+    console.error("\u274C Forgot password OTP verification failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "OTP verification failed",
+      error: error.message
+    });
+  }
+};
+var resetPassword = async (req, res) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+    if (!resetToken || !newPassword) {
+      res.status(400).json({
+        success: false,
+        message: "Reset token and new password are required"
+      });
+      return;
+    }
+    if (newPassword.length < 6) {
+      res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long"
+      });
+      return;
+    }
+    let decoded;
+    try {
+      decoded = jwt__default.default.verify(resetToken, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token"
+      });
+      return;
+    }
+    if (decoded.purpose !== "password-reset") {
+      res.status(400).json({
+        success: false,
+        message: "Invalid reset token"
+      });
+      return;
+    }
+    const user = await user_model_default.findById(decoded.userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+      return;
+    }
+    user.password = newPassword;
+    await user.save();
+    try {
+      const emailResult = await sendPasswordResetSuccess(user.email, user.name);
+      if (emailResult.success) {
+        console.log("\u2705 Password reset success email sent to:", user.email);
+      } else {
+        console.error("\u274C Failed to send password reset success email:", emailResult.error);
+      }
+    } catch (emailError) {
+      console.error("\u274C Failed to send password reset success email:", emailError);
+    }
+    console.log("\u2705 Password reset successfully for:", user.email);
+    res.status(200).json({
+      success: true,
+      data: {
+        message: "Password has been reset successfully"
+      }
+    });
+  } catch (error) {
+    console.error("\u274C Password reset failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Password reset failed",
+      error: error.message
+    });
+  }
+};
 
 // src/routes/auth.routes.ts
 var router = express7__default.default.Router();
 router.post("/register", register);
 router.post("/login", login);
 router.get("/logout", logout);
+router.post("/verify-otp", verifyOTP);
+router.post("/resend-otp", resendOTP);
+router.post("/forgot-password", forgotPassword);
+router.post("/verify-forgot-password-otp", verifyForgotPasswordOTP);
+router.post("/reset-password", resetPassword);
 router.get("/me", validateUserAccess, getCurrentUser);
 router.get("/refresh-token", validateUserAccess, refreshToken);
 router.put("/update-profile", validateUserAccess, updateProfile);
 router.put("/change-password", validateUserAccess, changePassword);
 var auth_routes_default = router;
-var PageSchema = new mongoose6.Schema(
+var PageSchema = new mongoose7.Schema(
   {
     name: {
       type: String,
@@ -1904,16 +4213,16 @@ var PageSchema = new mongoose6.Schema(
       trim: true
     },
     data: {
-      type: mongoose6.Schema.Types.Mixed,
+      type: mongoose7.Schema.Types.Mixed,
       default: {}
     },
     updatedBy: {
-      type: mongoose6.Schema.Types.ObjectId,
+      type: mongoose7.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
     createdBy: {
-      type: mongoose6.Schema.Types.ObjectId,
+      type: mongoose7.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
@@ -1930,7 +4239,7 @@ var PageSchema = new mongoose6.Schema(
     timestamps: true
   }
 );
-var Page = mongoose6__default.default.model("Page", PageSchema);
+var Page = mongoose7__default.default.model("Page", PageSchema);
 var MAX_FILE_SIZE = 10 * 1024 * 1024;
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
@@ -3050,10 +5359,155 @@ var getLegalPageTypes = async (req, res) => {
 };
 var uploadHomepageImages = getHomepageUploadMiddleware();
 var uploadLegalDocument = upload.legalDocument.single("markdownFile");
+var getNavbar = async (req, res) => {
+  try {
+    const navbar = await Page.findOne({ path: "navbar" }).populate("createdBy updatedBy", "email name").sort({ createdAt: -1 });
+    if (!navbar) {
+      const defaultNavbarData = {
+        navItems: [
+          {
+            id: uuid.v4(),
+            title: "WOMEN",
+            order: 1,
+            categories: [
+              {
+                id: uuid.v4(),
+                title: "Women's Clothing",
+                order: 1,
+                items: [
+                  { label: "T-Shirts", keyword: "womens-tshirts", href: "/womens/t-shirts", order: 1 },
+                  { label: "Skirts", keyword: "womens-skirts", href: "/womens/skirts", order: 2 },
+                  { label: "Shorts", keyword: "womens-shorts", href: "/womens/shorts", order: 3 },
+                  { label: "Jeans", keyword: "womens-jeans", href: "/womens/jeans", order: 4 }
+                ]
+              }
+            ]
+          },
+          {
+            id: uuid.v4(),
+            title: "MEN",
+            order: 2,
+            categories: [
+              {
+                id: uuid.v4(),
+                title: "Men's Clothing",
+                order: 1,
+                items: [
+                  { label: "T-Shirts", keyword: "mens-tshirts", href: "/mens/t-shirts", order: 1 },
+                  { label: "Shirts", keyword: "mens-shirts", href: "/mens/shirts", order: 2 },
+                  { label: "Jeans", keyword: "mens-jeans", href: "/mens/jeans", order: 3 }
+                ]
+              }
+            ]
+          }
+        ]
+      };
+      return res.status(200).json({
+        success: true,
+        message: "Default navbar configuration retrieved",
+        data: defaultNavbarData
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Navbar configuration retrieved successfully",
+      data: navbar.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving navbar configuration",
+      error: error.message
+    });
+  }
+};
+var updateNavbar = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { navItems } = req.body;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    if (!navItems || !Array.isArray(navItems)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid navbar data. navItems array is required."
+      });
+    }
+    const processedNavItems = navItems.map((section, sectionIndex) => ({
+      id: uuid.v4(),
+      title: section.title,
+      order: sectionIndex + 1,
+      categories: section.categories.map((category, categoryIndex) => ({
+        id: uuid.v4(),
+        title: category.title,
+        order: categoryIndex + 1,
+        items: category.items.map((item, itemIndex) => ({
+          label: item.label,
+          keyword: item.keyword,
+          href: item.href,
+          order: itemIndex + 1
+        }))
+      }))
+    }));
+    const navbarData = {
+      navItems: processedNavItems
+    };
+    let navbar = await Page.findOne({ path: "navbar" });
+    if (navbar) {
+      navbar.data = navbarData;
+      navbar.updatedBy = userId;
+      navbar.version = (navbar.version || 1) + 1;
+      await navbar.save();
+    } else {
+      navbar = new Page({
+        name: "Navbar Configuration",
+        path: "navbar",
+        data: navbarData,
+        createdBy: userId,
+        updatedBy: userId,
+        isActive: true,
+        version: 1
+      });
+      await navbar.save();
+    }
+    res.status(200).json({
+      success: true,
+      message: "Navbar configuration updated successfully",
+      data: navbar.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating navbar configuration",
+      error: error.message
+    });
+  }
+};
+var deleteNavbar = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
+    }
+    await Page.deleteOne({ path: "navbar" });
+    res.status(200).json({
+      success: true,
+      message: "Navbar configuration reset to default successfully"
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error resetting navbar configuration",
+      error: error.message
+    });
+  }
+};
 
 // src/routes/pages.routes.ts
 var pagesRouter = express7__default.default.Router();
 pagesRouter.get("/homepage", getHomepage);
+pagesRouter.get("/navbar", getNavbar);
 pagesRouter.get("/legal", getAllLegalPages);
 pagesRouter.get("/legal/types", getLegalPageTypes);
 pagesRouter.get("/legal/:type", getLegalPageByType);
@@ -3062,6 +5516,8 @@ pagesRouter.use(validateAdminAccess);
 pagesRouter.post("/homepage", uploadHomepageImages, createHomepage);
 pagesRouter.put("/homepage", uploadHomepageImages, updateHomepage);
 pagesRouter.delete("/homepage", deleteHomepage);
+pagesRouter.put("/navbar", updateNavbar);
+pagesRouter.delete("/navbar", deleteNavbar);
 pagesRouter.put("/legal/:type", uploadLegalDocument, createOrUpdateLegalPage);
 pagesRouter.delete("/legal/:type", deleteLegalPage);
 pagesRouter.get("/", getAllPages);
@@ -3070,7 +5526,7 @@ pagesRouter.post("/", uploadHomepageImages, createPage);
 pagesRouter.put("/:id", uploadHomepageImages, updatePage);
 pagesRouter.delete("/:id", deletePage);
 var pages_routes_default = pagesRouter;
-var testimonialSchema = new mongoose6.Schema(
+var testimonialSchema = new mongoose7.Schema(
   {
     name: {
       type: String,
@@ -3112,7 +5568,7 @@ var testimonialSchema = new mongoose6.Schema(
     timestamps: true
   }
 );
-var Testimonial = mongoose6__default.default.model("Testimonial", testimonialSchema);
+var Testimonial = mongoose7__default.default.model("Testimonial", testimonialSchema);
 
 // src/controllers/testimonial.controller.ts
 var getAllTestimonials = async (req, res) => {
@@ -3364,7 +5820,7 @@ testimonialsRouter.put("/:id", uploadTestimonialImage, updateTestimonial);
 testimonialsRouter.delete("/:id", deleteTestimonial);
 testimonialsRouter.patch("/:id/publish", togglePublishStatus);
 var testimonials_routes_default = testimonialsRouter;
-var InquirySchema = new mongoose6.Schema({
+var InquirySchema = new mongoose7.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true },
   purpose: {
@@ -3374,12 +5830,12 @@ var InquirySchema = new mongoose6.Schema({
   },
   message: { type: String, required: true },
   resolved: { type: Boolean, default: false },
-  resolvedBy: { type: mongoose6.Schema.Types.ObjectId, required: false, ref: "User" },
+  resolvedBy: { type: mongoose7.Schema.Types.ObjectId, required: false, ref: "User" },
   resolvingMessage: { type: String, required: false },
   createdAt: { type: Date, default: Date.now },
   resolvedAt: { type: Date, required: false }
 });
-var Inquiry = mongoose6__default.default.model("Inquiry", InquirySchema);
+var Inquiry = mongoose7__default.default.model("Inquiry", InquirySchema);
 
 // src/controllers/inquiry.controller.ts
 var getAllInquiries = async (req, res) => {
@@ -3631,6 +6087,34 @@ inquiryRouter.delete("/:id", deleteInquiry);
 var inquiry_routes_default = inquiryRouter;
 
 // src/controllers/user.controller.ts
+init_user_model();
+var getWishlistWithDetails = async (wishlisted) => {
+  const wishlistItems = [];
+  for (const productId of wishlisted) {
+    try {
+      const numericId = productId.toString().match(/(\d+)$/)?.[1] || productId;
+      const product = await shopify_service_default.getProduct(numericId);
+      if (product) {
+        const formattedProduct = {
+          id: product.id,
+          title: product.title,
+          handle: product.handle,
+          price: product.variants?.[0]?.price || "0.00",
+          compareAtPrice: product.variants?.[0]?.compare_at_price,
+          image: product.images?.[0]?.src || product.image?.src,
+          available: product.variants?.some((variant) => variant.available) || false
+        };
+        wishlistItems.push(formattedProduct);
+      }
+    } catch (error) {
+      console.error(`Error fetching product ${productId}:`, error);
+    }
+  }
+  return {
+    wishlistItems,
+    wishlisted
+  };
+};
 var getAllUsers = async (req, res) => {
   try {
     const { role, page = 1, limit = 20, search } = req.query;
@@ -3996,6 +6480,84 @@ var deleteUserAddress = async (req, res) => {
     });
   }
 };
+var addToWishlist = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { productId } = req.body;
+    const requestingUser = req.user;
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === "super_admin" /* superAdmin */;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only modify your own wishlist." });
+    }
+    if (!productId) {
+      return res.status(400).json({ success: false, message: "Product ID is required." });
+    }
+    const user = await user_model_default.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    if (!user.wishlisted.includes(productId)) {
+      user.wishlisted.push(productId);
+      await user.save();
+    }
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+    res.status(200).json({
+      success: true,
+      message: "Product added to wishlist",
+      data: wishlistData
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error adding to wishlist", error: error.message });
+  }
+};
+var removeFromWishlist = async (req, res) => {
+  try {
+    const { id, productId } = req.params;
+    const requestingUser = req.user;
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === "super_admin" /* superAdmin */;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only modify your own wishlist." });
+    }
+    const user = await user_model_default.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    user.wishlisted = user.wishlisted.filter((pid) => pid !== productId);
+    await user.save();
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+    res.status(200).json({
+      success: true,
+      message: "Product removed from wishlist",
+      data: wishlistData
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error removing from wishlist", error: error.message });
+  }
+};
+var getWishlist = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requestingUser = req.user;
+    const isOwnProfile = requestingUser._id.toString() === id;
+    const isSuperAdmin = requestingUser.role === "super_admin" /* superAdmin */;
+    if (!isOwnProfile && !isSuperAdmin) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only view your own wishlist." });
+    }
+    const user = await user_model_default.findById(id).select("wishlisted");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    const wishlistData = await getWishlistWithDetails(user.wishlisted);
+    res.status(200).json({
+      success: true,
+      data: wishlistData
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching wishlist", error: error.message });
+  }
+};
 
 // src/routes/user.routes.ts
 var userRouter = express7__default.default.Router();
@@ -4009,11 +6571,14 @@ userRouter.get("/", validateSuperAdminAccess, getAllUsers);
 userRouter.get("/stats/overview", validateSuperAdminAccess, getUserStats);
 userRouter.patch("/:id/role", validateSuperAdminAccess, changeUserRole);
 userRouter.delete("/:id", validateSuperAdminAccess, deleteUser);
+userRouter.post("/:id/wishlist", addToWishlist);
+userRouter.delete("/:id/wishlist/:productId", removeFromWishlist);
+userRouter.get("/:id/wishlist", getWishlist);
 var user_routes_default = userRouter;
-var reviewSchema = new mongoose6.Schema(
+var reviewSchema = new mongoose7.Schema(
   {
     userId: {
-      type: mongoose6.Schema.Types.ObjectId,
+      type: mongoose7.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
@@ -4058,7 +6623,7 @@ var reviewSchema = new mongoose6.Schema(
     timestamps: true
   }
 );
-var Review = mongoose6__default.default.model("Review", reviewSchema);
+var Review = mongoose7__default.default.model("Review", reviewSchema);
 
 // src/controllers/review.controller.ts
 var getProductReviews = async (req, res) => {
@@ -4294,7 +6859,7 @@ var deleteReview = async (req, res) => {
 var toggleFoundHelpful = async (req, res) => {
   try {
     const { id } = req.params;
-    const { helpful } = req.body;
+    const { helpful, action = "add" } = req.body;
     if (helpful === void 0) {
       return res.status(400).json({
         success: false,
@@ -4309,10 +6874,19 @@ var toggleFoundHelpful = async (req, res) => {
       });
     }
     const updateFields = {};
-    if (helpful === true || helpful === "true") {
-      updateFields.foundHelpful = (review.foundHelpful || 0) + 1;
+    const isHelpful = helpful === true || helpful === "true";
+    if (action === "remove") {
+      if (isHelpful) {
+        updateFields.foundHelpful = Math.max((review.foundHelpful || 0) - 1, 0);
+      } else {
+        updateFields.notHelpful = Math.max((review.notHelpful || 0) - 1, 0);
+      }
     } else {
-      updateFields.notHelpful = (review.notHelpful || 0) + 1;
+      if (isHelpful) {
+        updateFields.foundHelpful = (review.foundHelpful || 0) + 1;
+      } else {
+        updateFields.notHelpful = (review.notHelpful || 0) + 1;
+      }
     }
     const updatedReview = await Review.findByIdAndUpdate(
       id,
@@ -4321,7 +6895,7 @@ var toggleFoundHelpful = async (req, res) => {
     ).populate("userId", "name email");
     res.status(200).json({
       success: true,
-      message: `Review marked as ${helpful ? "helpful" : "not helpful"}`,
+      message: action === "remove" ? `Removed ${isHelpful ? "helpful" : "not helpful"} vote` : `Review marked as ${isHelpful ? "helpful" : "not helpful"}`,
       data: updatedReview
     });
   } catch (error) {
@@ -4468,10 +7042,10 @@ reviewsRouter.patch("/:id/helpful", toggleFoundHelpful);
 reviewsRouter.get("/", validateAdminAccess, getAllReviews);
 reviewsRouter.patch("/:id/verified-buyer", validateAdminAccess, toggleVerifiedBuyer);
 var reviews_routes_default = reviewsRouter;
-var cartSchema = new mongoose6__default.default.Schema(
+var cartSchema = new mongoose7__default.default.Schema(
   {
     userId: {
-      type: mongoose6__default.default.Schema.Types.ObjectId,
+      type: mongoose7__default.default.Schema.Types.ObjectId,
       required: true,
       ref: "User"
     },
@@ -4491,7 +7065,7 @@ var cartSchema = new mongoose6__default.default.Schema(
     timestamps: true
   }
 );
-var Cart = mongoose6__default.default.model("Cart", cartSchema);
+var Cart = mongoose7__default.default.model("Cart", cartSchema);
 
 // src/controllers/cart.controller.ts
 var getCart = async (req, res) => {
@@ -4780,6 +7354,58 @@ cartRouter.get("/admin/all", validateAdminAccess, getAllCarts);
 cartRouter.delete("/admin/:id", validateAdminAccess, deleteCart);
 var cart_routes_default = cartRouter;
 
+// src/controllers/dashboard.controller.ts
+init_user_model();
+var getDashboardStats = async (req, res) => {
+  try {
+    const totalUsers = await user_model_default.countDocuments();
+    const totalCarts = await Cart.countDocuments();
+    const totalInquiries = await Inquiry.countDocuments();
+    const totalReviews = await Review.countDocuments();
+    const totalTestimonials = await Testimonial.countDocuments();
+    const carts = await Cart.find({}, "totalPrice");
+    const totalSales = carts.reduce((sum, cart) => sum + (cart.totalPrice || 0), 0);
+    const stats = {
+      totalUsers,
+      totalCarts,
+      totalInquiries,
+      totalReviews,
+      totalTestimonials,
+      totalSales: Math.round(totalSales * 100) / 100
+      // Round to 2 decimal places
+    };
+    sendResponse(res, 200, "Dashboard stats retrieved successfully", stats);
+  } catch (error) {
+    console.error("Error fetching dashboard stats:", error);
+    sendResponse(res, 500, "Failed to fetch dashboard stats", void 0, "Internal server error");
+  }
+};
+var getRecentOrders = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const recentCarts = await Cart.find().populate("userId", "name email").sort({ createdAt: -1 }).limit(limit);
+    const recentOrders = recentCarts.map((cart) => ({
+      id: cart._id.toString(),
+      customer: cart.userId?.name || cart.userId?.email || "Unknown Customer",
+      amount: `$${cart.totalPrice.toFixed(2)}`,
+      status: "Completed",
+      // Since these are completed carts
+      date: new Date(cart.createdAt).toLocaleDateString()
+    }));
+    sendResponse(res, 200, "Recent orders retrieved successfully", recentOrders);
+  } catch (error) {
+    console.error("Error fetching recent orders:", error);
+    sendResponse(res, 500, "Failed to fetch recent orders", void 0, "Internal server error");
+  }
+};
+
+// src/routes/dashboard.routes.ts
+var router2 = express7.Router();
+router2.use(validateUserAccess);
+router2.get("/stats", getDashboardStats);
+router2.get("/recent-orders", getRecentOrders);
+var dashboard_routes_default = router2;
+
 // src/api.router.ts
 var apiRouter = express7.Router();
 apiRouter.use("/shopify", shopify_routes_default);
@@ -4790,6 +7416,7 @@ apiRouter.use("/inquiries", inquiry_routes_default);
 apiRouter.use("/users", user_routes_default);
 apiRouter.use("/reviews", reviews_routes_default);
 apiRouter.use("/cart", validateUserAccess, cart_routes_default);
+apiRouter.use("/dashboard", dashboard_routes_default);
 var api_router_default = apiRouter;
 
 // src/middleware/errorHandler.middleware.ts
@@ -4804,7 +7431,7 @@ var errorHandler = (err, req, res, next) => {
 var connectToDatabase = async () => {
   try {
     const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/ecommerce";
-    await mongoose6__default.default.connect(mongoUri);
+    await mongoose7__default.default.connect(mongoUri);
     console.log("\u{1F4E6} Connected to MongoDB database");
   } catch (error) {
     console.error("\u274C MongoDB connection error:", error);
@@ -4821,15 +7448,17 @@ app.use(express7__default.default.json());
 app.use(cookieParser__default.default());
 app.use(
   cors__default.default({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    // Allow requests only from configured client
+    origin: [
+      "https://linesapparel.ca",
+      "https://www.linesapparel.ca",
+      "http://localhost:3000"
+      // keep for local dev
+    ],
     credentials: true,
-    // Enable cookies and authorization headers
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     exposedHeaders: ["Set-Cookie"],
     maxAge: 86400
-    // CORS preflight cache time (24 hour)
   })
 );
 app.use("/api", api_router_default);

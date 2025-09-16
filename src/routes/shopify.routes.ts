@@ -2,7 +2,7 @@ import { Router } from "express";
 import * as shopifyController from "@/controllers/shopify.controller";
 import * as webhookController from "@/controllers/webhook.controller";
 import { validateShopifyWebhook } from "@/middleware/validateWebhook.middleware";
-import { validateAdminAccess } from "@/middleware/auth.middleware";
+import { validateAdminAccess, validateUserAccess } from "@/middleware/auth.middleware";
 
 const shopifyRouter = Router();
 
@@ -12,7 +12,10 @@ shopifyRouter.get("/auth/status", shopifyController.checkAuthStatus);
 
 // Products
 shopifyRouter.get("/products", shopifyController.getProducts);
+shopifyRouter.get("/products/search", shopifyController.searchProducts);
+shopifyRouter.get("/products/filters", shopifyController.getProductFilters);
 shopifyRouter.get("/products/:id", shopifyController.getProduct);
+shopifyRouter.get("/products/:id/recommendations", shopifyController.getProductRecommendations);
 shopifyRouter.get(
   "/products/handle/:handle",
   shopifyController.getProductByHandle
@@ -40,6 +43,7 @@ shopifyRouter.get(
 // Orders
 shopifyRouter.get("/orders", shopifyController.getOrders);
 shopifyRouter.get("/orders/:id", shopifyController.getOrder);
+shopifyRouter.get("/orders/user/my-orders", validateUserAccess, shopifyController.getUserOrders);
 shopifyRouter.post(
   "/orders",
   // validateAdminAccess,
@@ -99,6 +103,10 @@ shopifyRouter.get("/collections/:id", shopifyController.getCollection);
 shopifyRouter.get(
   "/collections/handle/:handle",
   shopifyController.getCollectionByHandle
+);
+shopifyRouter.get(
+  "/collections/handle/:handle/products",
+  shopifyController.getCollectionProductsFiltered
 );
 shopifyRouter.get(
   "/collections/:id/products",
