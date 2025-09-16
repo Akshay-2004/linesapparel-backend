@@ -17,8 +17,8 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}    # ec2-user
-          key: ${{ secrets.EC2_SSH_KEY }}      # private key (PEM or deploy key)
+          username: ${{ secrets.EC2_USER }} # ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }} # private key (PEM or deploy key)
           port: 22
           script: |
             set -e
@@ -31,7 +31,8 @@ jobs:
               git fetch --all
               git reset --hard origin/main
             else
-              git clone https://github.com/Akshay-2004/linesapparel-backend.git .
+                rm -rf ./*
+                git clone https://github.com/Akshay-2004/linesapparel-backend.git .
             fi
 
             # Ensure using main branch and pull latest
