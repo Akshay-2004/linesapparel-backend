@@ -1148,16 +1148,6 @@ var ShopifyService = class {
                   country
                   zip
                 }
-                fulfillments {
-                  trackingInfo {
-                    number
-                    url
-                  }
-                  trackingCompany
-                  status
-                  createdAt
-                  updatedAt
-                }
               }
             }
           }
@@ -3617,9 +3607,10 @@ var register = async (req, res) => {
     const nameParts = name.trim().split(" ");
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(" ") || "";
-    console.log("\u{1F6CD}\uFE0F Creating Shopify customer for:", email);
+    console.log("\u{1F6CD}\uFE0F Creating or linking Shopify customer for:", email);
     let shopifyCustomer;
     let customerAccessToken;
+    let isExistingCustomer = false;
     try {
       shopifyCustomer = await shopify_service_default.createStorefrontCustomer({
         email,
@@ -3631,20 +3622,63 @@ var register = async (req, res) => {
       if (!shopifyCustomer?.id) {
         throw new Error("Shopify customer creation failed or was throttled");
       }
-      const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
-      customerAccessToken = tokenData;
+      console.log("\u2705 New Shopify customer created");
     } catch (shopifyError) {
+      console.log("\u{1F50D} Customer creation failed, checking if customer already exists:", shopifyError.message);
       if (shopifyError.message && shopifyError.message.includes("THROTTLED")) {
         return res.status(429).json({
           success: false,
           message: "Too many signups. Please try again in a few minutes."
         });
       }
-      console.error("\u274C Shopify customer creation failed:", shopifyError.message);
-      return res.status(500).json({
-        success: false,
-        message: "Shopify customer creation failed. Please try again later."
-      });
+      if (shopifyError.message && (shopifyError.message.includes("Customer already exists") || shopifyError.message.includes("CUSTOMER_ALREADY_EXISTS") || shopifyError.message.includes("has already been taken"))) {
+        console.log("\u{1F517} Customer already exists in Shopify, attempting to link account");
+        isExistingCustomer = true;
+        try {
+          const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
+          customerAccessToken = tokenData;
+          const existingCustomer = await shopify_service_default.getCustomerWithAccessToken(tokenData.accessToken);
+          if (existingCustomer) {
+            shopifyCustomer = {
+              id: existingCustomer.id,
+              email: existingCustomer.email,
+              firstName: existingCustomer.firstName,
+              lastName: existingCustomer.lastName,
+              phone: existingCustomer.phone
+            };
+            console.log("\u2705 Successfully linked to existing Shopify customer");
+          } else {
+            throw new Error("Could not retrieve existing customer details");
+          }
+        } catch (linkError) {
+          console.error("\u274C Failed to link to existing Shopify customer:", linkError.message);
+          if (linkError.message && linkError.message.includes("Unidentified customer")) {
+            return res.status(400).json({
+              success: false,
+              message: "An account with this email already exists. Please use the correct password or try logging in instead."
+            });
+          }
+          return res.status(500).json({
+            success: false,
+            message: "Failed to link to existing Shopify account. Please try again or contact support."
+          });
+        }
+      } else {
+        console.error("\u274C Shopify customer creation/linking failed:", shopifyError.message);
+        return res.status(500).json({
+          success: false,
+          message: "Shopify customer creation failed. Please try again later."
+        });
+      }
+    }
+    if (!customerAccessToken && shopifyCustomer?.id) {
+      try {
+        const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
+        customerAccessToken = tokenData;
+        console.log("\u2705 Customer access token obtained");
+      } catch (tokenError) {
+        console.error("\u274C Failed to get customer access token:", tokenError.message);
+      }
     }
     const user = await user_model_default.create({
       name,
@@ -3658,7 +3692,11 @@ var register = async (req, res) => {
         customerAccessTokenExpiresAt: new Date(customerAccessToken.expiresAt)
       } : {}
     });
-    console.log("\u2705 User created with Shopify integration");
+    if (isExistingCustomer) {
+      console.log("\u2705 User created and linked to existing Shopify customer");
+    } else {
+      console.log("\u2705 User created with new Shopify customer");
+    }
     const otpCode = Math.floor(1e5 + Math.random() * 9e5).toString();
     let otpRecord = await otp_model_default.findOne({ email });
     if (otpRecord) {

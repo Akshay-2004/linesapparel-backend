@@ -1162,16 +1162,6 @@ class ShopifyService {
                   country
                   zip
                 }
-                fulfillments {
-                  trackingInfo {
-                    number
-                    url
-                  }
-                  trackingCompany
-                  status
-                  createdAt
-                  updatedAt
-                }
               }
             }
           }

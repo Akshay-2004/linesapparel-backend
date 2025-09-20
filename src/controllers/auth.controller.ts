@@ -86,13 +86,15 @@ export const register = async (req: Request, res: Response): Promise<any> => {
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    console.log('🛍️ Creating Shopify customer for:', email);
+    console.log('🛍️ Creating or linking Shopify customer for:', email);
     
-    // Create customer in Shopify first
+    // Try to create customer in Shopify or link to existing one
     let shopifyCustomer;
     let customerAccessToken;
+    let isExistingCustomer = false;
     
     try {
+      // First, try to create a new customer
       shopifyCustomer = await shopifyService.createStorefrontCustomer({
         email,
         password,
@@ -106,10 +108,10 @@ export const register = async (req: Request, res: Response): Promise<any> => {
         throw new Error('Shopify customer creation failed or was throttled');
       }
 
-      // Get customer access token
-      const tokenData = await shopifyService.createCustomerAccessToken(email, password);
-      customerAccessToken = tokenData;
+      console.log('✅ New Shopify customer created');
     } catch (shopifyError: any) {
+      console.log('🔍 Customer creation failed, checking if customer already exists:', shopifyError.message);
+      
       // If throttled, stop registration and return error
       if (
         shopifyError.message &&
@@ -120,11 +122,71 @@ export const register = async (req: Request, res: Response): Promise<any> => {
           message: 'Too many signups. Please try again in a few minutes.'
         });
       }
-      console.error('❌ Shopify customer creation failed:', shopifyError.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Shopify customer creation failed. Please try again later.'
-      });
+
+      // Check if the error is because customer already exists
+      if (
+        shopifyError.message &&
+        (shopifyError.message.includes('Customer already exists') ||
+         shopifyError.message.includes('CUSTOMER_ALREADY_EXISTS') ||
+         shopifyError.message.includes('has already been taken'))
+      ) {
+        console.log('🔗 Customer already exists in Shopify, attempting to link account');
+        isExistingCustomer = true;
+        
+        // Try to get access token for existing customer
+        try {
+          const tokenData = await shopifyService.createCustomerAccessToken(email, password);
+          customerAccessToken = tokenData;
+          
+          // Get customer details using the access token
+          const existingCustomer = await shopifyService.getCustomerWithAccessToken(tokenData.accessToken);
+          if (existingCustomer) {
+            shopifyCustomer = {
+              id: existingCustomer.id,
+              email: existingCustomer.email,
+              firstName: existingCustomer.firstName,
+              lastName: existingCustomer.lastName,
+              phone: existingCustomer.phone
+            };
+            console.log('✅ Successfully linked to existing Shopify customer');
+          } else {
+            throw new Error('Could not retrieve existing customer details');
+          }
+        } catch (linkError: any) {
+          console.error('❌ Failed to link to existing Shopify customer:', linkError.message);
+          
+          // If password doesn't match, inform user
+          if (linkError.message && linkError.message.includes('Unidentified customer')) {
+            return res.status(400).json({
+              success: false,
+              message: 'An account with this email already exists. Please use the correct password or try logging in instead.'
+            });
+          }
+          
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to link to existing Shopify account. Please try again or contact support.'
+          });
+        }
+      } else {
+        console.error('❌ Shopify customer creation/linking failed:', shopifyError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Shopify customer creation failed. Please try again later.'
+        });
+      }
+    }
+
+    // If we don't have a customer access token yet, try to get one
+    if (!customerAccessToken && shopifyCustomer?.id) {
+      try {
+        const tokenData = await shopifyService.createCustomerAccessToken(email, password);
+        customerAccessToken = tokenData;
+        console.log('✅ Customer access token obtained');
+      } catch (tokenError: any) {
+        console.error('❌ Failed to get customer access token:', tokenError.message);
+        // Continue without token - user can still register in our system
+      }
     }
 
     // Only set Shopify fields if available
@@ -143,7 +205,11 @@ export const register = async (req: Request, res: Response): Promise<any> => {
         : {}
     });
 
-    console.log('✅ User created with Shopify integration');
+    if (isExistingCustomer) {
+      console.log('✅ User created and linked to existing Shopify customer');
+    } else {
+      console.log('✅ User created with new Shopify customer');
+    }
 
     // Generate OTP
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
