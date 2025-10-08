@@ -86,12 +86,13 @@ export const register = async (req: Request, res: Response): Promise<any> => {
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    console.log('🛍️ Creating or linking Shopify customer for:', email);
+    console.log('🛍️ Attempting to create or link Shopify customer for:', email);
     
     // Try to create customer in Shopify or link to existing one
     let shopifyCustomer;
     let customerAccessToken;
     let isExistingCustomer = false;
+    let shopifyIntegrationFailed = false;
     
     try {
       // First, try to create a new customer
@@ -112,17 +113,6 @@ export const register = async (req: Request, res: Response): Promise<any> => {
     } catch (shopifyError: any) {
       console.log('🔍 Customer creation failed, checking if customer already exists:', shopifyError.message);
       
-      // If throttled, stop registration and return error
-      if (
-        shopifyError.message &&
-        shopifyError.message.includes('THROTTLED')
-      ) {
-        return res.status(429).json({
-          success: false,
-          message: 'Too many signups. Please try again in a few minutes.'
-        });
-      }
-
       // Check if the error is because customer already exists
       if (
         shopifyError.message &&
@@ -155,48 +145,46 @@ export const register = async (req: Request, res: Response): Promise<any> => {
         } catch (linkError: any) {
           console.error('❌ Failed to link to existing Shopify customer:', linkError.message);
           
-          // If password doesn't match, inform user
+          // If password doesn't match, we still continue with registration
+          // but inform user that they might need to use a different password for Shopify
           if (linkError.message && linkError.message.includes('Unidentified customer')) {
-            return res.status(400).json({
-              success: false,
-              message: 'An account with this email already exists. Please use the correct password or try logging in instead.'
-            });
+            console.log('⚠️ Password mismatch with existing Shopify customer - continuing with local registration');
+            shopifyIntegrationFailed = true;
+          } else {
+            console.log('⚠️ Failed to link Shopify account - continuing with local registration');
+            shopifyIntegrationFailed = true;
           }
-          
-          return res.status(500).json({
-            success: false,
-            message: 'Failed to link to existing Shopify account. Please try again or contact support.'
-          });
         }
       } else {
-        console.error('❌ Shopify customer creation/linking failed:', shopifyError.message);
-        return res.status(500).json({
-          success: false,
-          message: 'Shopify customer creation failed. Please try again later.'
-        });
+        // For any other Shopify error (network, API limits, etc.), continue with registration
+        console.error('❌ Shopify customer creation failed:', shopifyError.message);
+        console.log('📝 Continuing with local registration without Shopify integration');
+        shopifyIntegrationFailed = true;
       }
     }
 
     // If we don't have a customer access token yet, try to get one
-    if (!customerAccessToken && shopifyCustomer?.id) {
+    if (!customerAccessToken && shopifyCustomer?.id && !shopifyIntegrationFailed) {
       try {
         const tokenData = await shopifyService.createCustomerAccessToken(email, password);
         customerAccessToken = tokenData;
         console.log('✅ Customer access token obtained');
       } catch (tokenError: any) {
         console.error('❌ Failed to get customer access token:', tokenError.message);
+        console.log('📝 Continuing registration without Shopify access token');
         // Continue without token - user can still register in our system
       }
     }
 
-    // Only set Shopify fields if available
+    // Create user in local database - this should always succeed regardless of Shopify status
     const user = await User.create({
       name,
       email,
       password,
       verified: false,
       ...(phone ? { phone } : {}),
-      shopify: shopifyCustomer?.id && customerAccessToken
+      // Only set Shopify fields if integration was successful
+      shopify: (shopifyCustomer?.id && customerAccessToken && !shopifyIntegrationFailed)
         ? {
             customerId: shopifyCustomer.id,
             customerAccessToken: customerAccessToken.accessToken,
@@ -205,10 +193,15 @@ export const register = async (req: Request, res: Response): Promise<any> => {
         : {}
     });
 
-    if (isExistingCustomer) {
+    // Log the registration outcome
+    if (shopifyIntegrationFailed) {
+      console.log('✅ User created successfully (Shopify integration failed - user can still use the platform)');
+    } else if (isExistingCustomer) {
       console.log('✅ User created and linked to existing Shopify customer');
-    } else {
+    } else if (shopifyCustomer?.id) {
       console.log('✅ User created with new Shopify customer');
+    } else {
+      console.log('✅ User created without Shopify integration');
     }
 
     // Generate OTP
@@ -246,13 +239,18 @@ export const register = async (req: Request, res: Response): Promise<any> => {
     }
 
     // Return success response without token (user needs to verify first)
+    const responseMessage = shopifyIntegrationFailed 
+      ? 'Registration successful! Please check your email for verification code. Note: Shopify integration is temporarily unavailable but you can still use all platform features.'
+      : 'Registration successful! Please check your email for verification code.';
+
     res.status(201).json({
       success: true,
-      message: 'Registration successful! Please check your email for verification code.',
+      message: responseMessage,
       data: {
         email: user.email,
         name: user.name,
-        verified: user.verified
+        verified: user.verified,
+        shopifyIntegrated: !shopifyIntegrationFailed && !!shopifyCustomer?.id
       }
     });
   } catch (error: any) {
