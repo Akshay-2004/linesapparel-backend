@@ -15,22 +15,21 @@ import {
 } from '@/controllers/auth.controller';
 import { validateUserAccess } from '@/middleware/auth.middleware';
 import { 
-  signupLimiter, 
-  authLimiter, 
+
   passwordResetLimiter, 
   otpLimiter 
 } from '@/middleware/rateLimiter.middleware';
 
 const router = express.Router();
 
-router.post('/register', signupLimiter, register);
-router.post('/login', authLimiter, login);
+router.post('/register', register);
+router.post('/login', login);
 router.get('/logout', logout);
-router.post('/verify-otp', otpLimiter, verifyOTP);
-router.post('/resend-otp', otpLimiter, resendOTP);
-router.post('/forgot-password', passwordResetLimiter, forgotPassword);
-router.post('/verify-forgot-password-otp', otpLimiter, verifyForgotPasswordOTP);
-router.post('/reset-password', passwordResetLimiter, resetPassword);
+router.post('/verify-otp', verifyOTP);
+router.post('/resend-otp', resendOTP);
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-forgot-password-otp', verifyForgotPasswordOTP);
+router.post('/reset-password', resetPassword);
 router.get('/me', validateUserAccess, getCurrentUser);
 router.get('/refresh-token', validateUserAccess, refreshToken);
 router.put('/update-profile', validateUserAccess, updateProfile);

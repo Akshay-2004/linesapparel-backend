@@ -38,7 +38,7 @@ app.use(
 );
 
 // Apply general rate limiting to all API routes
-app.use("/api", generalLimiter);
+// app.use("/api", generalLimiter);
 
 // Mount API routes under /api prefix
 app.use("/api", apiRouter);

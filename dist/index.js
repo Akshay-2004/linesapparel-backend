@@ -9,7 +9,6 @@ var cors = require('cors');
 var crypto = require('crypto');
 var jwt = require('jsonwebtoken');
 var nodemailer = require('nodemailer');
-var rateLimit = require('express-rate-limit');
 var cloudinary = require('cloudinary');
 var multerStorageCloudinary = require('multer-storage-cloudinary');
 var multer = require('multer');
@@ -28,7 +27,6 @@ var cors__default = /*#__PURE__*/_interopDefault(cors);
 var crypto__default = /*#__PURE__*/_interopDefault(crypto);
 var jwt__default = /*#__PURE__*/_interopDefault(jwt);
 var nodemailer__default = /*#__PURE__*/_interopDefault(nodemailer);
-var rateLimit__default = /*#__PURE__*/_interopDefault(rateLimit);
 var multer__default = /*#__PURE__*/_interopDefault(multer);
 var fs__default = /*#__PURE__*/_interopDefault(fs);
 var axios__default = /*#__PURE__*/_interopDefault(axios);
@@ -4269,81 +4267,17 @@ var resetPassword = async (req, res) => {
     });
   }
 };
-var generalLimiter = rateLimit__default.default({
-  windowMs: 15 * 60 * 1e3,
-  // 15 minutes
-  max: 100,
-  // Limit each IP to 100 requests per windowMs
-  message: {
-    success: false,
-    message: "Too many requests from this IP, please try again after 15 minutes."
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-var authLimiter = rateLimit__default.default({
-  windowMs: 15 * 60 * 1e3,
-  // 15 minutes
-  max: 5,
-  // Limit each IP to 5 auth requests per windowMs
-  message: {
-    success: false,
-    message: "Too many authentication attempts from this IP, please try again after 15 minutes."
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Skip successful requests
-  skipSuccessfulRequests: true
-});
-var passwordResetLimiter = rateLimit__default.default({
-  windowMs: 60 * 60 * 1e3,
-  // 1 hour
-  max: 3,
-  // Limit each IP to 3 password reset requests per hour
-  message: {
-    success: false,
-    message: "Too many password reset attempts from this IP, please try again after 1 hour."
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-var otpLimiter = rateLimit__default.default({
-  windowMs: 10 * 60 * 1e3,
-  // 10 minutes
-  max: 3,
-  // Limit each IP to 3 OTP requests per 10 minutes
-  message: {
-    success: false,
-    message: "Too many OTP requests from this IP, please try again after 10 minutes."
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-var signupLimiter = rateLimit__default.default({
-  windowMs: 60 * 60 * 1e3,
-  // 1 hour
-  max: 3,
-  // Limit each IP to 3 signup attempts per hour
-  message: {
-    success: false,
-    message: "Too many signup attempts from this IP, please try again after 1 hour."
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Don't skip successful requests for signup
-  skipSuccessfulRequests: false
-});
 
 // src/routes/auth.routes.ts
 var router = express7__default.default.Router();
-router.post("/register", signupLimiter, register);
-router.post("/login", authLimiter, login);
+router.post("/register", register);
+router.post("/login", login);
 router.get("/logout", logout);
-router.post("/verify-otp", otpLimiter, verifyOTP);
-router.post("/resend-otp", otpLimiter, resendOTP);
-router.post("/forgot-password", passwordResetLimiter, forgotPassword);
-router.post("/verify-forgot-password-otp", otpLimiter, verifyForgotPasswordOTP);
-router.post("/reset-password", passwordResetLimiter, resetPassword);
+router.post("/verify-otp", verifyOTP);
+router.post("/resend-otp", resendOTP);
+router.post("/forgot-password", forgotPassword);
+router.post("/verify-forgot-password-otp", verifyForgotPasswordOTP);
+router.post("/reset-password", resetPassword);
 router.get("/me", validateUserAccess, getCurrentUser);
 router.get("/refresh-token", validateUserAccess, refreshToken);
 router.put("/update-profile", validateUserAccess, updateProfile);
@@ -7611,7 +7545,6 @@ app.use(
     maxAge: 86400
   })
 );
-app.use("/api", generalLimiter);
 app.use("/api", api_router_default);
 app.get("/", (req, res) => {
   res.send("Admin dashboard API is running...");
