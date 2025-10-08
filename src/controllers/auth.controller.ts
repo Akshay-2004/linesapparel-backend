@@ -315,6 +315,56 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           console.log('✅ New customer access token created and saved');
         } catch (shopifyError: any) {
           console.error('❌ Failed to get Shopify customer access token:', shopifyError);
+          
+          // If customer doesn't exist in Shopify, try to create them
+          if (shopifyError.message && 
+              (shopifyError.message.includes('UNIDENTIFIED_CUSTOMER') || 
+               shopifyError.message.includes('Unidentified customer'))) {
+            console.log('🔗 Customer not found in Shopify, checking if customer exists...');
+            
+            try {
+              // First check if customer exists in Shopify
+              const existingCustomer = await shopifyService.checkCustomerExists(email);
+              
+              if (existingCustomer) {
+                console.log('⚠️ Customer exists in Shopify but password mismatch');
+                console.log('💡 User can still login to local system, but Shopify integration may be limited');
+                // Customer exists but password doesn't match - continue without Shopify token
+              } else {
+                console.log('🔗 Customer not found in Shopify, attempting to create...');
+                
+                // Try to create the customer in Shopify
+                const shopifyCustomer = await shopifyService.createStorefrontCustomer({
+                  email: user.email,
+                  password: password,
+                  firstName: user.name.split(' ')[0],
+                  lastName: user.name.split(' ').slice(1).join(' ') || '',
+                  phone: user.phone
+                });
+                
+                if (shopifyCustomer?.id) {
+                  console.log('✅ Shopify customer created, retrying access token creation');
+                  
+                  // Now try to create the access token again
+                  const tokenData = await shopifyService.createCustomerAccessToken(email, password);
+                  customerAccessToken = tokenData.accessToken;
+                  tokenExpiresAt = new Date(tokenData.expiresAt);
+                  
+                  // Update user with Shopify customer info and token
+                  await User.findByIdAndUpdate(user._id, {
+                    'shopify.customerId': shopifyCustomer.id,
+                    'shopify.customerAccessToken': customerAccessToken,
+                    'shopify.customerAccessTokenExpiresAt': tokenExpiresAt
+                  });
+                  
+                  console.log('✅ Customer created in Shopify and access token obtained');
+                }
+              }
+            } catch (createError: any) {
+              console.error('❌ Failed to create customer in Shopify during login:', createError);
+              // Don't fail the login - user can still use the system without Shopify integration
+            }
+          }
           // Don't fail the login if Shopify token creation fails
         }
       } else {

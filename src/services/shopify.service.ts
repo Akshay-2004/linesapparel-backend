@@ -571,6 +571,24 @@ class ShopifyService {
     return this.getCustomers({ query });
   }
 
+  async checkCustomerExists(email: string): Promise<any> {
+    try {
+      console.log(`🔍 Checking if customer exists in Shopify: ${email}`);
+      const customers = await this.getCustomers({ query: `email:${email}` });
+      
+      if (customers && customers.length > 0) {
+        console.log('✅ Customer found in Shopify');
+        return customers[0];
+      }
+      
+      console.log('❌ Customer not found in Shopify');
+      return null;
+    } catch (error) {
+      console.error('❌ Error checking customer existence:', error);
+      return null;
+    }
+  }
+
   // Inventory methods
   async getInventoryLevels(locationId?: string) {
     const queryString = locationId ? `?location_id=${locationId}` : "";

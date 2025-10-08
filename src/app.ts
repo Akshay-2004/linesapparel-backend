@@ -8,6 +8,7 @@ import apiRouter from "@/api.router";
 import { errorHandler } from "@/middleware/errorHandler.middleware";
 import { connectToDatabase } from "@/config/db.config";
 import { validateShopifyConfig } from "@/config/shopify.config";
+import { generalLimiter } from "@/middleware/rateLimiter.middleware";
 
 const app = express();
 
@@ -36,6 +37,8 @@ app.use(
   })
 );
 
+// Apply general rate limiting to all API routes
+app.use("/api", generalLimiter);
 
 // Mount API routes under /api prefix
 app.use("/api", apiRouter);

@@ -9,6 +9,7 @@ var cors = require('cors');
 var crypto = require('crypto');
 var jwt = require('jsonwebtoken');
 var nodemailer = require('nodemailer');
+var rateLimit = require('express-rate-limit');
 var cloudinary = require('cloudinary');
 var multerStorageCloudinary = require('multer-storage-cloudinary');
 var multer = require('multer');
@@ -27,6 +28,7 @@ var cors__default = /*#__PURE__*/_interopDefault(cors);
 var crypto__default = /*#__PURE__*/_interopDefault(crypto);
 var jwt__default = /*#__PURE__*/_interopDefault(jwt);
 var nodemailer__default = /*#__PURE__*/_interopDefault(nodemailer);
+var rateLimit__default = /*#__PURE__*/_interopDefault(rateLimit);
 var multer__default = /*#__PURE__*/_interopDefault(multer);
 var fs__default = /*#__PURE__*/_interopDefault(fs);
 var axios__default = /*#__PURE__*/_interopDefault(axios);
@@ -673,6 +675,21 @@ var ShopifyService = class {
   }
   async searchCustomers(query) {
     return this.getCustomers({ query });
+  }
+  async checkCustomerExists(email) {
+    try {
+      console.log(`\u{1F50D} Checking if customer exists in Shopify: ${email}`);
+      const customers = await this.getCustomers({ query: `email:${email}` });
+      if (customers && customers.length > 0) {
+        console.log("\u2705 Customer found in Shopify");
+        return customers[0];
+      }
+      console.log("\u274C Customer not found in Shopify");
+      return null;
+    } catch (error) {
+      console.error("\u274C Error checking customer existence:", error);
+      return null;
+    }
   }
   // Inventory methods
   async getInventoryLevels(locationId) {
@@ -3773,6 +3790,39 @@ var login = async (req, res) => {
           console.log("\u2705 New customer access token created and saved");
         } catch (shopifyError) {
           console.error("\u274C Failed to get Shopify customer access token:", shopifyError);
+          if (shopifyError.message && (shopifyError.message.includes("UNIDENTIFIED_CUSTOMER") || shopifyError.message.includes("Unidentified customer"))) {
+            console.log("\u{1F517} Customer not found in Shopify, checking if customer exists...");
+            try {
+              const existingCustomer = await shopify_service_default.checkCustomerExists(email);
+              if (existingCustomer) {
+                console.log("\u26A0\uFE0F Customer exists in Shopify but password mismatch");
+                console.log("\u{1F4A1} User can still login to local system, but Shopify integration may be limited");
+              } else {
+                console.log("\u{1F517} Customer not found in Shopify, attempting to create...");
+                const shopifyCustomer = await shopify_service_default.createStorefrontCustomer({
+                  email: user.email,
+                  password,
+                  firstName: user.name.split(" ")[0],
+                  lastName: user.name.split(" ").slice(1).join(" ") || "",
+                  phone: user.phone
+                });
+                if (shopifyCustomer?.id) {
+                  console.log("\u2705 Shopify customer created, retrying access token creation");
+                  const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
+                  customerAccessToken = tokenData.accessToken;
+                  tokenExpiresAt = new Date(tokenData.expiresAt);
+                  await user_model_default.findByIdAndUpdate(user._id, {
+                    "shopify.customerId": shopifyCustomer.id,
+                    "shopify.customerAccessToken": customerAccessToken,
+                    "shopify.customerAccessTokenExpiresAt": tokenExpiresAt
+                  });
+                  console.log("\u2705 Customer created in Shopify and access token obtained");
+                }
+              }
+            } catch (createError) {
+              console.error("\u274C Failed to create customer in Shopify during login:", createError);
+            }
+          }
         }
       } else {
         console.log("\u2705 Using existing valid customer access token");
@@ -4221,17 +4271,81 @@ var resetPassword = async (req, res) => {
     });
   }
 };
+var generalLimiter = rateLimit__default.default({
+  windowMs: 15 * 60 * 1e3,
+  // 15 minutes
+  max: 100,
+  // Limit each IP to 100 requests per windowMs
+  message: {
+    success: false,
+    message: "Too many requests from this IP, please try again after 15 minutes."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+var authLimiter = rateLimit__default.default({
+  windowMs: 15 * 60 * 1e3,
+  // 15 minutes
+  max: 5,
+  // Limit each IP to 5 auth requests per windowMs
+  message: {
+    success: false,
+    message: "Too many authentication attempts from this IP, please try again after 15 minutes."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Skip successful requests
+  skipSuccessfulRequests: true
+});
+var passwordResetLimiter = rateLimit__default.default({
+  windowMs: 60 * 60 * 1e3,
+  // 1 hour
+  max: 3,
+  // Limit each IP to 3 password reset requests per hour
+  message: {
+    success: false,
+    message: "Too many password reset attempts from this IP, please try again after 1 hour."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+var otpLimiter = rateLimit__default.default({
+  windowMs: 10 * 60 * 1e3,
+  // 10 minutes
+  max: 3,
+  // Limit each IP to 3 OTP requests per 10 minutes
+  message: {
+    success: false,
+    message: "Too many OTP requests from this IP, please try again after 10 minutes."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+var signupLimiter = rateLimit__default.default({
+  windowMs: 60 * 60 * 1e3,
+  // 1 hour
+  max: 3,
+  // Limit each IP to 3 signup attempts per hour
+  message: {
+    success: false,
+    message: "Too many signup attempts from this IP, please try again after 1 hour."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Don't skip successful requests for signup
+  skipSuccessfulRequests: false
+});
 
 // src/routes/auth.routes.ts
 var router = express7__default.default.Router();
-router.post("/register", register);
-router.post("/login", login);
+router.post("/register", signupLimiter, register);
+router.post("/login", authLimiter, login);
 router.get("/logout", logout);
-router.post("/verify-otp", verifyOTP);
-router.post("/resend-otp", resendOTP);
-router.post("/forgot-password", forgotPassword);
-router.post("/verify-forgot-password-otp", verifyForgotPasswordOTP);
-router.post("/reset-password", resetPassword);
+router.post("/verify-otp", otpLimiter, verifyOTP);
+router.post("/resend-otp", otpLimiter, resendOTP);
+router.post("/forgot-password", passwordResetLimiter, forgotPassword);
+router.post("/verify-forgot-password-otp", otpLimiter, verifyForgotPasswordOTP);
+router.post("/reset-password", passwordResetLimiter, resetPassword);
 router.get("/me", validateUserAccess, getCurrentUser);
 router.get("/refresh-token", validateUserAccess, refreshToken);
 router.put("/update-profile", validateUserAccess, updateProfile);
@@ -7499,6 +7613,7 @@ app.use(
     maxAge: 86400
   })
 );
+app.use("/api", generalLimiter);
 app.use("/api", api_router_default);
 app.get("/", (req, res) => {
   res.send("Admin dashboard API is running...");
