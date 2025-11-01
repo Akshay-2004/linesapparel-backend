@@ -5,6 +5,7 @@ export interface IHeroContent {
     pretitle?: string;
     title: string;
     subtitle: string;
+    link?: string; // Optional link for the hero slide
   }>;
   autoPlay: boolean;
   interval: number;
