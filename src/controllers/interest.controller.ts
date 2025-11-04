@@ -37,7 +37,9 @@ export const createInterest = async (req: Request, res: Response) => {
     res.status(201).json({
       success: true,
       message: 'Interest registered successfully',
-      data: savedInterest
+      data: {
+        email: savedInterest.email,
+      }
     });
   } catch (error: any) {
     res.status(500).json({

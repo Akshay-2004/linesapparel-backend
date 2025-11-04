@@ -7528,7 +7528,9 @@ var createInterest = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Interest registered successfully",
-      data: savedInterest
+      data: {
+        email: savedInterest.email
+      }
     });
   } catch (error) {
     res.status(500).json({
