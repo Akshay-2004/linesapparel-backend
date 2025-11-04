@@ -8,6 +8,7 @@ import userRouter from '@/routes/user.routes';
 import reviewsRouter from '@/routes/reviews.routes';
 import cartRouter from './routes/cart.routes';
 import dashboardRouter from './routes/dashboard.routes';
+import interestRouter from '@/routes/interest.routes';
 import { validateUserAccess } from './middleware/auth.middleware';
 
 const apiRouter = Router();
@@ -22,5 +23,6 @@ apiRouter.use('/users', userRouter);
 apiRouter.use('/reviews', reviewsRouter);
 apiRouter.use('/cart', validateUserAccess ,cartRouter);
 apiRouter.use('/dashboard', dashboardRouter);
+apiRouter.use('/interests', interestRouter);
 
 export default apiRouter;

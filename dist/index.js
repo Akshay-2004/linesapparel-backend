@@ -7489,6 +7489,115 @@ router2.use(validateUserAccess);
 router2.get("/stats", getDashboardStats);
 router2.get("/recent-orders", getRecentOrders);
 var dashboard_routes_default = router2;
+var interestSchema = new mongoose7__default.default.Schema({
+  email: {
+    type: String,
+    required: true
+  }
+}, {
+  timestamps: { createdAt: true, updatedAt: false }
+});
+var interest_model_default = mongoose7__default.default.model("Interest", interestSchema);
+
+// src/controllers/interest.controller.ts
+var createInterest = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required"
+      });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format"
+      });
+    }
+    const existingInterest = await interest_model_default.findOne({ email });
+    if (existingInterest) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already registered for interest"
+      });
+    }
+    const newInterest = new interest_model_default({ email });
+    const savedInterest = await newInterest.save();
+    res.status(201).json({
+      success: true,
+      message: "Interest registered successfully",
+      data: savedInterest
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error registering interest",
+      error: error.message
+    });
+  }
+};
+var getAllInterests = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search } = req.query;
+    const filter = {};
+    if (search && search.toString().trim()) {
+      filter.email = { $regex: search.toString().trim(), $options: "i" };
+    }
+    const skip = (Number(page) - 1) * Number(limit);
+    const interests = await interest_model_default.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit));
+    const total = await interest_model_default.countDocuments(filter);
+    res.status(200).json({
+      success: true,
+      data: {
+        interests,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          totalPages: Math.ceil(total / Number(limit))
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching interests",
+      error: error.message
+    });
+  }
+};
+var deleteInterest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const interest = await interest_model_default.findById(id);
+    if (!interest) {
+      return res.status(404).json({
+        success: false,
+        message: "Interest not found"
+      });
+    }
+    await interest_model_default.findByIdAndDelete(id);
+    res.status(200).json({
+      success: true,
+      message: "Interest deleted successfully"
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error deleting interest",
+      error: error.message
+    });
+  }
+};
+
+// src/routes/interest.routes.ts
+var router3 = express7.Router();
+router3.post("/", createInterest);
+router3.get("/", validateAdminAccess, getAllInterests);
+router3.delete("/:id", validateAdminAccess, deleteInterest);
+var interest_routes_default = router3;
 
 // src/api.router.ts
 var apiRouter = express7.Router();
@@ -7501,6 +7610,7 @@ apiRouter.use("/users", user_routes_default);
 apiRouter.use("/reviews", reviews_routes_default);
 apiRouter.use("/cart", validateUserAccess, cart_routes_default);
 apiRouter.use("/dashboard", dashboard_routes_default);
+apiRouter.use("/interests", interest_routes_default);
 var api_router_default = apiRouter;
 
 // src/middleware/errorHandler.middleware.ts
