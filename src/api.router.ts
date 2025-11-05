@@ -9,6 +9,7 @@ import reviewsRouter from '@/routes/reviews.routes';
 import cartRouter from './routes/cart.routes';
 import dashboardRouter from './routes/dashboard.routes';
 import interestRouter from '@/routes/interest.routes';
+import textBannerRouter from '@/routes/text-banner.routes';
 import { validateUserAccess } from './middleware/auth.middleware';
 
 const apiRouter = Router();
@@ -24,5 +25,6 @@ apiRouter.use('/reviews', reviewsRouter);
 apiRouter.use('/cart', validateUserAccess ,cartRouter);
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/interests', interestRouter);
+apiRouter.use('/text-banners', textBannerRouter);
 
 export default apiRouter;

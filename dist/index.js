@@ -7602,6 +7602,209 @@ router3.post("/", createInterest);
 router3.get("/", validateAdminAccess, getAllInterests);
 router3.delete("/:id", validateAdminAccess, deleteInterest);
 var interest_routes_default = router3;
+var textBannerSchema = new mongoose7__default.default.Schema({
+  content: { type: String, required: true },
+  isActive: { type: Boolean, default: true }
+}, {
+  timestamps: true
+});
+var TextBanner = mongoose7__default.default.model("TextBanner", textBannerSchema);
+
+// src/controllers/text-banner.controller.ts
+var createTextBanner = async (req, res) => {
+  try {
+    const { content, isActive } = req.body;
+    if (!content) {
+      return res.status(400).json({
+        success: false,
+        message: "Content is required"
+      });
+    }
+    const newTextBanner = new TextBanner({
+      content,
+      isActive: isActive !== void 0 ? isActive : true
+    });
+    const savedTextBanner = await newTextBanner.save();
+    res.status(201).json({
+      success: true,
+      message: "Text banner created successfully",
+      data: savedTextBanner
+    });
+  } catch (error) {
+    console.error("Error creating text banner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create text banner",
+      error: error.message
+    });
+  }
+};
+var getAllTextBanners = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = "" } = req.query;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    let query = {};
+    if (search) {
+      query.content = { $regex: search, $options: "i" };
+    }
+    const textBanners = await TextBanner.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum);
+    const totalCount = await TextBanner.countDocuments(query);
+    const totalPages = Math.ceil(totalCount / limitNum);
+    res.status(200).json({
+      success: true,
+      data: {
+        textBanners,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalCount,
+          hasNext: pageNum < totalPages,
+          hasPrev: pageNum > 1
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching text banners:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch text banners",
+      error: error.message
+    });
+  }
+};
+var getTextBanner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const textBanner = await TextBanner.findById(id);
+    if (!textBanner) {
+      return res.status(404).json({
+        success: false,
+        message: "Text banner not found"
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: textBanner
+    });
+  } catch (error) {
+    console.error("Error fetching text banner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch text banner",
+      error: error.message
+    });
+  }
+};
+var updateTextBanner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content, isActive } = req.body;
+    const updateData = {};
+    if (content !== void 0) updateData.content = content;
+    if (isActive !== void 0) updateData.isActive = isActive;
+    const updatedTextBanner = await TextBanner.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+    if (!updatedTextBanner) {
+      return res.status(404).json({
+        success: false,
+        message: "Text banner not found"
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Text banner updated successfully",
+      data: updatedTextBanner
+    });
+  } catch (error) {
+    console.error("Error updating text banner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update text banner",
+      error: error.message
+    });
+  }
+};
+var deleteTextBanner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedTextBanner = await TextBanner.findByIdAndDelete(id);
+    if (!deletedTextBanner) {
+      return res.status(404).json({
+        success: false,
+        message: "Text banner not found"
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Text banner deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting text banner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete text banner",
+      error: error.message
+    });
+  }
+};
+var toggleTextBannerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const textBanner = await TextBanner.findById(id);
+    if (!textBanner) {
+      return res.status(404).json({
+        success: false,
+        message: "Text banner not found"
+      });
+    }
+    textBanner.isActive = !textBanner.isActive;
+    await textBanner.save();
+    res.status(200).json({
+      success: true,
+      message: `Text banner ${textBanner.isActive ? "activated" : "deactivated"} successfully`,
+      data: textBanner
+    });
+  } catch (error) {
+    console.error("Error toggling text banner status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to toggle text banner status",
+      error: error.message
+    });
+  }
+};
+var getActiveTextBanners = async (req, res) => {
+  try {
+    const activeTextBanners = await TextBanner.find({ isActive: true }).sort({ createdAt: -1 });
+    res.status(200).json({
+      success: true,
+      data: activeTextBanners
+    });
+  } catch (error) {
+    console.error("Error fetching active text banners:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch active text banners",
+      error: error.message
+    });
+  }
+};
+
+// src/routes/text-banner.routes.ts
+var router4 = express7.Router();
+router4.get("/active", getActiveTextBanners);
+router4.post("/", validateAdminAccess, createTextBanner);
+router4.get("/", validateAdminAccess, getAllTextBanners);
+router4.get("/:id", validateAdminAccess, getTextBanner);
+router4.put("/:id", validateAdminAccess, updateTextBanner);
+router4.delete("/:id", validateAdminAccess, deleteTextBanner);
+router4.patch("/:id/toggle-status", validateAdminAccess, toggleTextBannerStatus);
+var text_banner_routes_default = router4;
 
 // src/api.router.ts
 var apiRouter = express7.Router();
@@ -7615,6 +7818,7 @@ apiRouter.use("/reviews", reviews_routes_default);
 apiRouter.use("/cart", validateUserAccess, cart_routes_default);
 apiRouter.use("/dashboard", dashboard_routes_default);
 apiRouter.use("/interests", interest_routes_default);
+apiRouter.use("/text-banners", text_banner_routes_default);
 var api_router_default = apiRouter;
 
 // src/middleware/errorHandler.middleware.ts
