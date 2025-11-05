@@ -7543,12 +7543,14 @@ var createInterest = async (req, res) => {
 var getAllInterests = async (req, res) => {
   try {
     const { page = 1, limit = 10, search } = req.query;
+    const maxLimit = 1e4;
+    const actualLimit = Math.min(Number(limit), maxLimit);
     const filter = {};
     if (search && search.toString().trim()) {
       filter.email = { $regex: search.toString().trim(), $options: "i" };
     }
-    const skip = (Number(page) - 1) * Number(limit);
-    const interests = await interest_model_default.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit));
+    const skip = (Number(page) - 1) * actualLimit;
+    const interests = await interest_model_default.find(filter).sort({ createdAt: -1 }).skip(skip).limit(actualLimit);
     const total = await interest_model_default.countDocuments(filter);
     res.status(200).json({
       success: true,
@@ -7556,9 +7558,9 @@ var getAllInterests = async (req, res) => {
         interests,
         pagination: {
           page: Number(page),
-          limit: Number(limit),
+          limit: actualLimit,
           total,
-          totalPages: Math.ceil(total / Number(limit))
+          totalPages: Math.ceil(total / actualLimit)
         }
       }
     });

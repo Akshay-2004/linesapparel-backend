@@ -55,6 +55,10 @@ export const getAllInterests = async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 10, search } = req.query;
 
+    // Allow larger limits for export (up to 10,000)
+    const maxLimit = 10000;
+    const actualLimit = Math.min(Number(limit), maxLimit);
+
     const filter: any = {};
 
     // Search by email if specified
@@ -62,12 +66,12 @@ export const getAllInterests = async (req: Request, res: Response) => {
       filter.email = { $regex: search.toString().trim(), $options: 'i' };
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const skip = (Number(page) - 1) * actualLimit;
 
     const interests = await Interest.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(actualLimit);
 
     const total = await Interest.countDocuments(filter);
 
@@ -77,9 +81,9 @@ export const getAllInterests = async (req: Request, res: Response) => {
         interests,
         pagination: {
           page: Number(page),
-          limit: Number(limit),
+          limit: actualLimit,
           total,
-          totalPages: Math.ceil(total / Number(limit))
+          totalPages: Math.ceil(total / actualLimit)
         }
       }
     });
