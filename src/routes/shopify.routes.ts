@@ -12,6 +12,7 @@ shopifyRouter.get("/auth/status", shopifyController.checkAuthStatus);
 
 // Products
 shopifyRouter.get("/products", shopifyController.getProducts);
+shopifyRouter.get("/products/all", shopifyController.getAllProducts);
 shopifyRouter.get("/products/search", shopifyController.searchProducts);
 shopifyRouter.get("/products/filters", shopifyController.getProductFilters);
 shopifyRouter.get("/products/:id", shopifyController.getProduct);

@@ -759,8 +759,8 @@ export const searchProducts = async (req: Request, res: Response) => {
       ...(after && { after: after as string }),
       sortKey: sortKey as any,
       reverse: reverse === 'true',
-      ...(productType && { productType: productType as string }),
-      ...(vendor && { vendor: vendor as string }),
+      ...(productType && { productType: (productType as string).split(',') }),
+      ...(vendor && { vendor: (vendor as string).split(',') }),
       ...(available !== undefined && { available: available === 'true' }),
       ...(priceMin && { priceMin: parseFloat(priceMin as string) }),
       ...(priceMax && { priceMax: parseFloat(priceMax as string) })
@@ -779,6 +779,60 @@ export const searchProducts = async (req: Request, res: Response) => {
     );
   }
 };
+
+export const getAllProducts = async (req: Request, res: Response) => {
+  try {
+    const {
+      first = 250,
+      after,
+      sortKey = 'RELEVANCE',
+      reverse = false,
+      vendor,
+      productType,
+      available,
+      priceMin,
+      priceMax
+    } = req.query;
+
+    console.log('🔍 Getting all products request:', {
+      first: parseInt(first as string),
+      sortKey,
+      reverse,
+      filters: { vendor, productType, available, priceMin, priceMax }
+    });
+
+    const options = {
+      first: parseInt(first as string),
+      ...(after && { after: after as string }),
+      sortKey: sortKey as any,
+      reverse: reverse === 'true',
+      ...(vendor && { vendor: (vendor as string).split(',') }),
+      ...(productType && { productType: (productType as string).split(',') }),
+      ...(available !== undefined && { available: available === 'true' }),
+      ...(priceMin && { priceMin: parseFloat(priceMin as string) }),
+      ...(priceMax && { priceMax: parseFloat(priceMax as string) })
+    };
+
+    const result = await shopifyService.getAllProductsStorefront(options);
+
+    console.log('✅ All products fetched successfully', {
+      productsCount: result.products.length,
+      vendors: result.filters.availableVendors,
+      productTypes: result.filters.availableProductTypes
+    });
+
+    return sendResponse(res, 200, "All products retrieved successfully", result);
+  } catch (error: any) {
+    return sendResponse(
+      res,
+      500,
+      "Failed to fetch all products",
+      undefined,
+      error.message
+    );
+  }
+};
+
 
 export const getCollectionProductsFiltered = async (req: Request, res: Response) => {
   try {
