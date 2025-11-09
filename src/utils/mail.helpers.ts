@@ -643,12 +643,8 @@ export async function sendEmail(options: SendEmailOptions): Promise<EmailResult>
       ...(options.bcc && { bcc: options.bcc }),
     };
 
-    console.log(`📧 Sending email to ${options.to} with template ${options.templateType}`);
-
     // Send email
     const result = await transporter.sendMail(mailOptions);
-
-    console.log(`✅ Email sent successfully: ${result.messageId}`);
     
     return {
       success: true,

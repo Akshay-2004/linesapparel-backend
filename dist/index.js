@@ -475,15 +475,9 @@ var ShopifyService = class {
   async getOrdersByEmail(email, params = {}) {
     try {
       const limit = params.limit || 50;
-      console.log(`\u{1F50D} [getOrdersByEmail] Searching for orders with email: ${email}`);
-      console.log(`\u{1F4CA} [getOrdersByEmail] Request parameters:`, { limit, params });
       const apiUrl = `/orders.json?limit=250&status=any&financial_status=any&fulfillment_status=any`;
-      console.log(`\u{1F310} [getOrdersByEmail] Making API request to: ${apiUrl}`);
       const ordersResponse = await this.makeRequest(apiUrl);
-      console.log(`\u{1F4E6} [getOrdersByEmail] Raw Shopify API response status:`, ordersResponse.status);
-      console.log(`\u{1F4E6} [getOrdersByEmail] Total orders retrieved:`, ordersResponse.data?.orders?.length || 0);
       if (!ordersResponse.data || !ordersResponse.data.orders) {
-        console.log(`\u274C [getOrdersByEmail] No orders data in response`);
         return {
           orders: [],
           customer: null,
@@ -495,32 +489,15 @@ var ShopifyService = class {
         };
       }
       if (ordersResponse.data.orders.length > 0) {
-        console.log(`\u{1F4CB} [getOrdersByEmail] Sample order structure:`, {
-          id: ordersResponse.data.orders[0].id,
-          email: ordersResponse.data.orders[0].email,
-          created_at: ordersResponse.data.orders[0].created_at,
-          financial_status: ordersResponse.data.orders[0].financial_status,
-          total_price: ordersResponse.data.orders[0].total_price
-        });
         const allEmails = ordersResponse.data.orders.map((order) => order.email).filter((email2) => email2).filter((email2, index, arr) => arr.indexOf(email2) === index);
-        console.log(`\u{1F4E7} [getOrdersByEmail] All unique emails in orders:`, allEmails);
       }
-      console.log(`\u{1F50E} [getOrdersByEmail] Filtering orders by email: ${email.toLowerCase()}`);
       const userOrders = ordersResponse.data.orders.filter((order) => {
         const orderEmail = order.email?.toLowerCase();
         const targetEmail = email.toLowerCase();
         const matches = orderEmail === targetEmail;
-        if (order.email) {
-          console.log(`\u{1F4E8} [getOrdersByEmail] Order ${order.id}: email "${orderEmail}" ${matches ? "\u2705 MATCHES" : "\u274C NO MATCH"} target "${targetEmail}"`);
-        } else {
-          console.log(`\u{1F4ED} [getOrdersByEmail] Order ${order.id}: has no email`);
-        }
         return order.email && matches;
       });
-      console.log(`\u{1F3AF} [getOrdersByEmail] Found ${userOrders.length} matching orders for email: ${email}`);
       if (userOrders.length === 0) {
-        console.log(`\u26A0\uFE0F [getOrdersByEmail] No orders found for email: ${email}`);
-        console.log(`\u{1F4A1} [getOrdersByEmail] Suggestion: Check if the email is correct and if orders exist in Shopify`);
         return {
           orders: [],
           customer: null,
@@ -532,28 +509,9 @@ var ShopifyService = class {
         };
       }
       userOrders.forEach((order, index) => {
-        console.log(`\u{1F4CB} [getOrdersByEmail] Order ${index + 1}/${userOrders.length}:`, {
-          id: order.id,
-          name: order.name,
-          email: order.email,
-          created_at: order.created_at,
-          total_price: order.total_price,
-          financial_status: order.financial_status,
-          fulfillment_status: order.fulfillment_status,
-          line_items_count: order.line_items?.length || 0,
-          fulfillments_count: order.fulfillments?.length || 0
-        });
       });
-      console.log(`\u{1F504} [getOrdersByEmail] Transforming ${userOrders.length} orders...`);
       const transformedOrders = userOrders.map((order, index) => {
-        console.log(`\u{1F504} [getOrdersByEmail] Transforming order ${index + 1}: ${order.id}`);
         const fulfillments = order.fulfillments ? order.fulfillments.map((fulfillment) => {
-          console.log(`\u{1F4E6} [getOrdersByEmail] Processing fulfillment ${fulfillment.id}:`, {
-            status: fulfillment.status,
-            tracking_number: fulfillment.tracking_number,
-            tracking_company: fulfillment.tracking_company,
-            tracking_urls: fulfillment.tracking_urls
-          });
           return {
             id: fulfillment.id,
             status: fulfillment.status,
@@ -572,16 +530,8 @@ var ShopifyService = class {
             }
           };
         }) : [];
-        console.log(`\u{1F4E6} [getOrdersByEmail] Order ${order.id} has ${fulfillments.length} fulfillments`);
         const lineItems = {
           edges: order.line_items ? order.line_items.map((item) => {
-            console.log(`\u{1F6CD}\uFE0F [getOrdersByEmail] Processing line item ${item.id}:`, {
-              title: item.title,
-              quantity: item.quantity,
-              price: item.price,
-              variant_id: item.variant_id,
-              product_id: item.product_id
-            });
             return {
               node: {
                 id: item.id,
@@ -606,7 +556,6 @@ var ShopifyService = class {
             };
           }) : []
         };
-        console.log(`\u{1F6CD}\uFE0F [getOrdersByEmail] Order ${order.id} has ${lineItems.edges.length} line items`);
         const transformedOrder = {
           id: order.id,
           name: order.name,
@@ -628,7 +577,6 @@ var ShopifyService = class {
             zip: order.shipping_address.zip
           } : void 0
         };
-        console.log(`\u2705 [getOrdersByEmail] Successfully transformed order ${order.id}`);
         return transformedOrder;
       });
       const customerInfo = userOrders.length > 0 ? {
@@ -637,7 +585,6 @@ var ShopifyService = class {
         firstName: userOrders[0].billing_address?.first_name || userOrders[0].shipping_address?.first_name || "Customer",
         lastName: userOrders[0].billing_address?.last_name || userOrders[0].shipping_address?.last_name || ""
       } : null;
-      console.log(`\u{1F464} [getOrdersByEmail] Customer info extracted:`, customerInfo);
       const result = {
         orders: transformedOrders,
         customer: customerInfo,
@@ -647,11 +594,6 @@ var ShopifyService = class {
         has_next_page: false,
         has_previous_page: false
       };
-      console.log(`\u{1F389} [getOrdersByEmail] Final result summary:`, {
-        orders_count: result.orders.length,
-        customer_email: result.customer?.email,
-        customer_name: `${result.customer?.firstName} ${result.customer?.lastName}`.trim()
-      });
       return result;
     } catch (error) {
       console.error("\u274C [getOrdersByEmail] Error fetching orders by email:", error);
@@ -700,13 +642,10 @@ var ShopifyService = class {
   }
   async checkCustomerExists(email) {
     try {
-      console.log(`\u{1F50D} Checking if customer exists in Shopify: ${email}`);
       const customers = await this.getCustomers({ query: `email:${email}` });
       if (customers && customers.length > 0) {
-        console.log("\u2705 Customer found in Shopify");
         return customers[0];
       }
-      console.log("\u274C Customer not found in Shopify");
       return null;
     } catch (error) {
       console.error("\u274C Error checking customer existence:", error);
@@ -920,22 +859,15 @@ var ShopifyService = class {
   }
   // Webhook processing methods
   async processNewOrder(orderData) {
-    console.log("Processing new order", orderData.id);
     return true;
   }
   async processOrderUpdate(orderData) {
-    console.log("Processing order update", orderData.id);
     return true;
   }
   async processProductUpdate(productData) {
-    console.log("Processing product update", productData.id);
     return true;
   }
   async processInventoryUpdate(inventoryData) {
-    console.log(
-      "Processing inventory update for item",
-      inventoryData.inventory_item_id
-    );
     return true;
   }
   // Helper methods for webhook validation
@@ -1130,7 +1062,6 @@ var ShopifyService = class {
       }
     };
     try {
-      console.log("\u{1F511} Creating customer access token for:", email);
       const result = await this.makeStorefrontRequest(mutation, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
@@ -1144,7 +1075,6 @@ var ShopifyService = class {
       if (!accessTokenData) {
         throw new Error("No access token returned from Shopify");
       }
-      console.log("\u2705 Customer access token created successfully");
       return accessTokenData;
     } catch (error) {
       console.error("\u274C Error creating customer access token:", error);
@@ -1219,7 +1149,6 @@ var ShopifyService = class {
       customerAccessToken: accessToken
     };
     try {
-      console.log("\u{1F50D} Fetching customer data with access token");
       const result = await this.makeStorefrontRequest(query, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
@@ -1228,7 +1157,6 @@ var ShopifyService = class {
       if (!customer) {
         throw new Error("Customer not found or access token invalid");
       }
-      console.log("\u2705 Customer data fetched successfully");
       return customer;
     } catch (error) {
       console.error("\u274C Error fetching customer:", error);
@@ -1311,7 +1239,6 @@ var ShopifyService = class {
       ...after && { after }
     };
     try {
-      console.log("\u{1F50D} Fetching customer orders with access token", { first, after });
       const result = await this.makeStorefrontRequest(query, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
@@ -1322,10 +1249,6 @@ var ShopifyService = class {
       }
       const ordersConnection = customer.orders;
       const orders = ordersConnection.edges.map((edge) => edge.node);
-      console.log("\u2705 Customer orders fetched successfully", {
-        ordersCount: orders.length,
-        totalCount: ordersConnection.totalCount
-      });
       return {
         orders,
         customer: {
@@ -1361,7 +1284,6 @@ var ShopifyService = class {
       customerAccessToken: accessToken
     };
     try {
-      console.log("\u{1F504} Renewing customer access token");
       const result = await this.makeStorefrontRequest(mutation, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
@@ -1374,7 +1296,6 @@ var ShopifyService = class {
       if (!accessTokenData) {
         throw new Error("No renewed access token returned from Shopify");
       }
-      console.log("\u2705 Customer access token renewed successfully");
       return accessTokenData;
     } catch (error) {
       console.error("\u274C Error renewing customer access token:", error);
@@ -1505,7 +1426,6 @@ var ShopifyService = class {
       ...after && { after }
     };
     try {
-      console.log("\u{1F50D} Searching products with query:", searchQuery);
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
@@ -1527,11 +1447,6 @@ var ShopifyService = class {
           minPrice = Math.min(minPrice, price);
           maxPrice = Math.max(maxPrice, price);
         });
-      });
-      console.log("\u2705 Product search completed", {
-        productsCount: products.length,
-        vendors: Array.from(vendorSet),
-        productTypes: Array.from(productTypeSet)
       });
       return {
         products,
@@ -1650,7 +1565,6 @@ var ShopifyService = class {
       ...after && { after }
     };
     try {
-      console.log("\u{1F50D} Fetching collection products:", { collectionHandle, first, sortKey });
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
@@ -1694,13 +1608,6 @@ var ShopifyService = class {
           minPrice = Math.min(minPrice, price);
           maxPrice = Math.max(maxPrice, price);
         });
-      });
-      console.log("\u2705 Collection products fetched successfully", {
-        collection: collection.title,
-        totalProducts: allProducts.length,
-        filteredProducts: products.length,
-        vendors: Array.from(vendorSet),
-        productTypes: Array.from(productTypeSet)
       });
       return {
         collection: {
@@ -1774,15 +1681,11 @@ var ShopifyService = class {
       intent
     };
     try {
-      console.log("\u{1F50D} Fetching product recommendations");
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
       }
       const recommendations = result.data?.productRecommendations || [];
-      console.log("\u2705 Product recommendations fetched successfully", {
-        count: recommendations.length
-      });
       return recommendations;
     } catch (error) {
       console.error("\u274C Error fetching product recommendations:", error);
@@ -1909,7 +1812,6 @@ var ShopifyService = class {
       ...after && { after }
     };
     try {
-      console.log("\u{1F50D} Fetching all products with filters:", { searchQuery, first, sortKey });
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       if (result.errors) {
         throw new Error(`Storefront GraphQL errors: ${JSON.stringify(result.errors)}`);
@@ -1931,11 +1833,6 @@ var ShopifyService = class {
           minPrice = Math.min(minPrice, price);
           maxPrice = Math.max(maxPrice, price);
         });
-      });
-      console.log("\u2705 All products fetched successfully", {
-        productsCount: products.length,
-        vendors: Array.from(vendorSet),
-        productTypes: Array.from(productTypeSet)
       });
       return {
         products,
@@ -2622,12 +2519,6 @@ var searchProducts = async (req, res) => {
       priceMin,
       priceMax
     } = req.query;
-    console.log("\u{1F50D} Product search request:", {
-      query,
-      limit: parseInt(limit),
-      sortKey,
-      filters: { productType, vendor, available, priceMin, priceMax }
-    });
     const searchOptions = {
       query,
       first: parseInt(limit),
@@ -2665,12 +2556,6 @@ var getAllProducts = async (req, res) => {
       priceMin,
       priceMax
     } = req.query;
-    console.log("\u{1F50D} Getting all products request:", {
-      first: parseInt(first),
-      sortKey,
-      reverse,
-      filters: { vendor, productType, available, priceMin, priceMax }
-    });
     const options = {
       first: parseInt(first),
       ...after && { after },
@@ -2683,11 +2568,6 @@ var getAllProducts = async (req, res) => {
       ...priceMax && { priceMax: parseFloat(priceMax) }
     };
     const result = await shopify_service_default.getAllProductsStorefront(options);
-    console.log("\u2705 All products fetched successfully", {
-      productsCount: result.products.length,
-      vendors: result.filters.availableVendors,
-      productTypes: result.filters.availableProductTypes
-    });
     return sendResponse(res, 200, "All products retrieved successfully", result);
   } catch (error) {
     return sendResponse(
@@ -2713,12 +2593,6 @@ var getCollectionProductsFiltered = async (req, res) => {
       productType,
       vendor
     } = req.query;
-    console.log("\u{1F50D} Collection products filter request:", {
-      handle,
-      limit: parseInt(limit),
-      sortKey,
-      filters: { available, priceMin, priceMax, productType, vendor }
-    });
     const filterOptions = {
       first: parseInt(limit),
       ...after && { after },
@@ -2748,7 +2622,6 @@ var getProductRecommendations = async (req, res) => {
   try {
     const { id } = req.params;
     const { intent = "RELATED" } = req.query;
-    console.log("\u{1F50D} Product recommendations request:", { productId: id, intent });
     const recommendations = await shopify_service_default.getProductRecommendations(
       id,
       intent
@@ -2767,7 +2640,6 @@ var getProductRecommendations = async (req, res) => {
 var getProductFilters = async (req, res) => {
   try {
     const { collection } = req.query;
-    console.log("\u{1F50D} Getting product filters for collection:", collection);
     let filterData;
     if (collection) {
       const collectionData = await shopify_service_default.getCollectionProductsStorefront(
@@ -2797,37 +2669,21 @@ var getProductFilters = async (req, res) => {
 var getUserOrders = async (req, res) => {
   try {
     const userEmail = req.user.email;
-    console.log(`\u{1F510} [getUserOrders] Authenticated user:`, {
-      user_id: req.user._id,
-      email: userEmail,
-      name: req.user.name,
-      role: req.user.role
-    });
     if (!userEmail) {
-      console.log(`\u274C [getUserOrders] No email found for authenticated user`);
       return sendResponse(res, 400, "User email not found");
     }
     const User = (init_user_model(), __toCommonJS(user_model_exports)).default;
     const user = await User.findById(req.user._id);
     if (!user || !user.shopify?.customerAccessToken) {
-      console.log(`\u274C [getUserOrders] No Shopify customer access token found for user`);
       return sendResponse(res, 400, "Shopify customer access token not found. Please re-login to connect your account.");
     }
     const now = /* @__PURE__ */ new Date();
     const tokenExpired = !user.shopify.customerAccessTokenExpiresAt || user.shopify.customerAccessTokenExpiresAt <= now;
     if (tokenExpired) {
-      console.log(`\u274C [getUserOrders] Customer access token expired`);
       return sendResponse(res, 401, "Customer access token expired. Please re-login to refresh your session.");
     }
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    console.log(`\u{1F4CB} [getUserOrders] Request parameters:`, {
-      page,
-      limit,
-      userEmail,
-      hasToken: !!user.shopify.customerAccessToken,
-      tokenExpires: user.shopify.customerAccessTokenExpiresAt
-    });
     const ordersData = await shopify_service_default.getCustomerOrdersWithAccessToken(
       user.shopify.customerAccessToken,
       {
@@ -2836,11 +2692,6 @@ var getUserOrders = async (req, res) => {
         // For simplicity, we'll fetch orders without cursor pagination for now
       }
     );
-    console.log(`\u{1F4E6} [getUserOrders] Orders data retrieved:`, {
-      orders_count: ordersData.orders.length,
-      customer: ordersData.customer,
-      total_count: ordersData.totalCount
-    });
     return sendResponse(res, 200, "User orders retrieved successfully", ordersData);
   } catch (error) {
     console.error(`\u274C [getUserOrders] Error:`, error);
@@ -3758,9 +3609,7 @@ async function sendEmail(options) {
       ...options.cc && { cc: options.cc },
       ...options.bcc && { bcc: options.bcc }
     };
-    console.log(`\u{1F4E7} Sending email to ${options.to} with template ${options.templateType}`);
     const result = await transporter.sendMail(mailOptions);
-    console.log(`\u2705 Email sent successfully: ${result.messageId}`);
     return {
       success: true,
       messageId: result.messageId
@@ -3885,7 +3734,6 @@ var register = async (req, res) => {
     const nameParts = name.trim().split(" ");
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(" ") || "";
-    console.log("\u{1F6CD}\uFE0F Attempting to create or link Shopify customer for:", email);
     let shopifyCustomer;
     let customerAccessToken;
     let isExistingCustomer = false;
@@ -3901,11 +3749,8 @@ var register = async (req, res) => {
       if (!shopifyCustomer?.id) {
         throw new Error("Shopify customer creation failed or was throttled");
       }
-      console.log("\u2705 New Shopify customer created");
     } catch (shopifyError) {
-      console.log("\u{1F50D} Customer creation failed, checking if customer already exists:", shopifyError.message);
       if (shopifyError.message && (shopifyError.message.includes("Customer already exists") || shopifyError.message.includes("CUSTOMER_ALREADY_EXISTS") || shopifyError.message.includes("has already been taken"))) {
-        console.log("\u{1F517} Customer already exists in Shopify, attempting to link account");
         isExistingCustomer = true;
         try {
           const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
@@ -3919,23 +3764,19 @@ var register = async (req, res) => {
               lastName: existingCustomer.lastName,
               phone: existingCustomer.phone
             };
-            console.log("\u2705 Successfully linked to existing Shopify customer");
           } else {
             throw new Error("Could not retrieve existing customer details");
           }
         } catch (linkError) {
           console.error("\u274C Failed to link to existing Shopify customer:", linkError.message);
           if (linkError.message && linkError.message.includes("Unidentified customer")) {
-            console.log("\u26A0\uFE0F Password mismatch with existing Shopify customer - continuing with local registration");
             shopifyIntegrationFailed = true;
           } else {
-            console.log("\u26A0\uFE0F Failed to link Shopify account - continuing with local registration");
             shopifyIntegrationFailed = true;
           }
         }
       } else {
         console.error("\u274C Shopify customer creation failed:", shopifyError.message);
-        console.log("\u{1F4DD} Continuing with local registration without Shopify integration");
         shopifyIntegrationFailed = true;
       }
     }
@@ -3943,10 +3784,8 @@ var register = async (req, res) => {
       try {
         const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
         customerAccessToken = tokenData;
-        console.log("\u2705 Customer access token obtained");
       } catch (tokenError) {
         console.error("\u274C Failed to get customer access token:", tokenError.message);
-        console.log("\u{1F4DD} Continuing registration without Shopify access token");
       }
     }
     const user = await user_model_default.create({
@@ -3962,22 +3801,12 @@ var register = async (req, res) => {
         customerAccessTokenExpiresAt: new Date(customerAccessToken.expiresAt)
       } : {}
     });
-    if (shopifyIntegrationFailed) {
-      console.log("\u2705 User created successfully (Shopify integration failed - user can still use the platform)");
-    } else if (isExistingCustomer) {
-      console.log("\u2705 User created and linked to existing Shopify customer");
-    } else if (shopifyCustomer?.id) {
-      console.log("\u2705 User created with new Shopify customer");
-    } else {
-      console.log("\u2705 User created without Shopify integration");
-    }
     const otpCode = Math.floor(1e5 + Math.random() * 9e5).toString();
     let otpRecord = await otp_model_default.findOne({ email });
     if (otpRecord) {
       otpRecord.otp = otpCode;
       otpRecord.expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
       await otpRecord.save();
-      console.log("\u2705 OTP updated for existing email");
     } else {
       otpRecord = await otp_model_default.create({
         email,
@@ -3985,12 +3814,10 @@ var register = async (req, res) => {
         expiresAt: new Date(Date.now() + 10 * 60 * 1e3)
         // 10 minutes
       });
-      console.log("\u2705 New OTP created");
     }
     try {
       const emailResult = await sendOTPEmail(email, otpCode, name, 10);
       if (emailResult.success) {
-        console.log("\u2705 OTP email sent successfully");
       } else {
         console.error("\u274C Failed to send OTP email:", emailResult.error);
       }
@@ -4031,13 +3858,11 @@ var login = async (req, res) => {
         res.status(401).json({ message: "Invalid credentials" });
         return;
       }
-      console.log("\u{1F510} User authenticated, getting Shopify customer access token");
       let customerAccessToken = user.shopify?.customerAccessToken;
       let tokenExpiresAt = user.shopify?.customerAccessTokenExpiresAt;
       const now = /* @__PURE__ */ new Date();
       const tokenExpired = !tokenExpiresAt || tokenExpiresAt <= now;
       if (!customerAccessToken || tokenExpired) {
-        console.log("\u{1F504} Creating new customer access token");
         try {
           const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
           customerAccessToken = tokenData.accessToken;
@@ -4046,18 +3871,13 @@ var login = async (req, res) => {
             "shopify.customerAccessToken": customerAccessToken,
             "shopify.customerAccessTokenExpiresAt": tokenExpiresAt
           });
-          console.log("\u2705 New customer access token created and saved");
         } catch (shopifyError) {
           console.error("\u274C Failed to get Shopify customer access token:", shopifyError);
           if (shopifyError.message && (shopifyError.message.includes("UNIDENTIFIED_CUSTOMER") || shopifyError.message.includes("Unidentified customer"))) {
-            console.log("\u{1F517} Customer not found in Shopify, checking if customer exists...");
             try {
               const existingCustomer = await shopify_service_default.checkCustomerExists(email);
               if (existingCustomer) {
-                console.log("\u26A0\uFE0F Customer exists in Shopify but password mismatch");
-                console.log("\u{1F4A1} User can still login to local system, but Shopify integration may be limited");
               } else {
-                console.log("\u{1F517} Customer not found in Shopify, attempting to create...");
                 const shopifyCustomer = await shopify_service_default.createStorefrontCustomer({
                   email: user.email,
                   password,
@@ -4066,7 +3886,6 @@ var login = async (req, res) => {
                   phone: user.phone
                 });
                 if (shopifyCustomer?.id) {
-                  console.log("\u2705 Shopify customer created, retrying access token creation");
                   const tokenData = await shopify_service_default.createCustomerAccessToken(email, password);
                   customerAccessToken = tokenData.accessToken;
                   tokenExpiresAt = new Date(tokenData.expiresAt);
@@ -4075,7 +3894,6 @@ var login = async (req, res) => {
                     "shopify.customerAccessToken": customerAccessToken,
                     "shopify.customerAccessTokenExpiresAt": tokenExpiresAt
                   });
-                  console.log("\u2705 Customer created in Shopify and access token obtained");
                 }
               }
             } catch (createError) {
@@ -4084,7 +3902,6 @@ var login = async (req, res) => {
           }
         }
       } else {
-        console.log("\u2705 Using existing valid customer access token");
       }
       sendTokenResponse(user, 200, res, req);
     } catch (error) {
@@ -4252,7 +4069,6 @@ var verifyOTP = async (req, res) => {
     user.verified = true;
     await user.save();
     await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
-    console.log("\u2705 User email verified successfully:", email);
     sendTokenResponse(user, 200, res, req);
   } catch (error) {
     console.error("\u274C OTP verification failed:", error);
@@ -4304,7 +4120,6 @@ var resendOTP = async (req, res) => {
     try {
       const emailResult = await sendOTPEmail(email, otpCode, user.name, 10);
       if (emailResult.success) {
-        console.log("\u2705 OTP resent successfully to:", email);
         res.status(200).json({
           success: true,
           message: "Verification code sent successfully! Please check your email."
@@ -4367,7 +4182,6 @@ var forgotPassword = async (req, res) => {
     try {
       const emailResult = await sendForgotPasswordOTP(user.email, otpCode, user.name, 10);
       if (emailResult.success) {
-        console.log("\u2705 Forgot password OTP sent successfully to:", user.email);
       } else {
         console.error("\u274C Failed to send forgot password email:", emailResult.error);
       }
@@ -4443,7 +4257,6 @@ var verifyForgotPasswordOTP = async (req, res) => {
       }
     );
     await otp_model_default.deleteOne({ email: email.toLowerCase().trim() });
-    console.log("\u2705 Forgot password OTP verified successfully for:", email);
     res.status(200).json({
       success: true,
       data: {
@@ -4507,14 +4320,12 @@ var resetPassword = async (req, res) => {
     try {
       const emailResult = await sendPasswordResetSuccess(user.email, user.name);
       if (emailResult.success) {
-        console.log("\u2705 Password reset success email sent to:", user.email);
       } else {
         console.error("\u274C Failed to send password reset success email:", emailResult.error);
       }
     } catch (emailError) {
       console.error("\u274C Failed to send password reset success email:", emailError);
     }
-    console.log("\u2705 Password reset successfully for:", user.email);
     res.status(200).json({
       success: true,
       data: {

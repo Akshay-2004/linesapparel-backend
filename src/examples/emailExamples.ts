@@ -22,7 +22,6 @@ export async function sendVerificationOTP(userEmail: string, userName: string, o
     const result = await sendOTPEmail(userEmail, otpCode, userName, 10);
     
     if (result.success) {
-      console.log('Verification OTP sent successfully:', result.messageId);
       return { success: true, messageId: result.messageId };
     } else {
       console.error('Failed to send verification OTP:', result.error);
@@ -40,7 +39,6 @@ export async function sendUserWelcomeEmail(userEmail: string, userName: string) 
     const result = await sendWelcomeEmail(userEmail, userName);
     
     if (result.success) {
-      console.log('Welcome email sent successfully:', result.messageId);
       return { success: true };
     } else {
       console.error('Failed to send welcome email:', result.error);
@@ -58,7 +56,6 @@ export async function sendPasswordResetOTP(userEmail: string, userName: string, 
     const result = await sendForgotPasswordOTP(userEmail, otpCode, userName, 15);
     
     if (result.success) {
-      console.log('Password reset OTP sent successfully:', result.messageId);
       return { success: true };
     } else {
       console.error('Failed to send password reset OTP:', result.error);
@@ -84,7 +81,6 @@ export async function sendOrderConfirmationEmail(
     const result = await sendOrderConfirmation(customerEmail, orderDetails);
     
     if (result.success) {
-      console.log('Order confirmation sent successfully:', result.messageId);
       return { success: true };
     } else {
       console.error('Failed to send order confirmation:', result.error);
@@ -116,7 +112,6 @@ export async function sendCustomEmail(recipientEmail: string, subject: string, h
     });
     
     if (result.success) {
-      console.log('Custom email sent successfully:', result.messageId);
       return { success: true };
     } else {
       console.error('Failed to send custom email:', result.error);
@@ -142,7 +137,6 @@ export async function sendInquiryConfirmation(
     const result = await sendInquiryReceived(customerEmail, inquiryDetails);
     
     if (result.success) {
-      console.log('Inquiry confirmation sent successfully:', result.messageId);
       return { success: true };
     } else {
       console.error('Failed to send inquiry confirmation:', result.error);
@@ -203,8 +197,6 @@ export async function sendBulkEmail(
   
   const successCount = results.filter(r => r.success).length;
   const failureCount = results.filter(r => !r.success).length;
-  
-  console.log(`Bulk email completed: ${successCount} sent, ${failureCount} failed`);
   
   return {
     totalSent: successCount,

@@ -746,13 +746,6 @@ export const searchProducts = async (req: Request, res: Response) => {
       priceMax
     } = req.query;
 
-    console.log('🔍 Product search request:', {
-      query,
-      limit: parseInt(limit as string),
-      sortKey,
-      filters: { productType, vendor, available, priceMin, priceMax }
-    });
-
     const searchOptions = {
       query: query as string,
       first: parseInt(limit as string),
@@ -794,13 +787,6 @@ export const getAllProducts = async (req: Request, res: Response) => {
       priceMax
     } = req.query;
 
-    console.log('🔍 Getting all products request:', {
-      first: parseInt(first as string),
-      sortKey,
-      reverse,
-      filters: { vendor, productType, available, priceMin, priceMax }
-    });
-
     const options = {
       first: parseInt(first as string),
       ...(after && { after: after as string }),
@@ -814,12 +800,6 @@ export const getAllProducts = async (req: Request, res: Response) => {
     };
 
     const result = await shopifyService.getAllProductsStorefront(options);
-
-    console.log('✅ All products fetched successfully', {
-      productsCount: result.products.length,
-      vendors: result.filters.availableVendors,
-      productTypes: result.filters.availableProductTypes
-    });
 
     return sendResponse(res, 200, "All products retrieved successfully", result);
   } catch (error: any) {
@@ -848,13 +828,6 @@ export const getCollectionProductsFiltered = async (req: Request, res: Response)
       productType,
       vendor
     } = req.query;
-
-    console.log('🔍 Collection products filter request:', {
-      handle,
-      limit: parseInt(limit as string),
-      sortKey,
-      filters: { available, priceMin, priceMax, productType, vendor }
-    });
 
     const filterOptions = {
       first: parseInt(limit as string),
@@ -889,8 +862,6 @@ export const getProductRecommendations = async (req: Request, res: Response) => 
     const { id } = req.params;
     const { intent = 'RELATED' } = req.query;
 
-    console.log('🔍 Product recommendations request:', { productId: id, intent });
-
     const recommendations = await shopifyService.getProductRecommendations(
       id,
       intent as 'RELATED' | 'COMPLEMENTARY'
@@ -911,8 +882,6 @@ export const getProductRecommendations = async (req: Request, res: Response) => 
 export const getProductFilters = async (req: Request, res: Response) => {
   try {
     const { collection } = req.query;
-
-    console.log('🔍 Getting product filters for collection:', collection);
 
     let filterData;
     
@@ -949,15 +918,7 @@ export const getUserOrders = async (req: any, res: Response) => {
     // Get user email from the authenticated user
     const userEmail = req.user.email;
     
-    console.log(`🔐 [getUserOrders] Authenticated user:`, {
-      user_id: req.user._id,
-      email: userEmail,
-      name: req.user.name,
-      role: req.user.role
-    });
-    
     if (!userEmail) {
-      console.log(`❌ [getUserOrders] No email found for authenticated user`);
       return sendResponse(res, 400, "User email not found");
     }
 
@@ -966,7 +927,6 @@ export const getUserOrders = async (req: any, res: Response) => {
     const user = await User.findById(req.user._id);
     
     if (!user || !user.shopify?.customerAccessToken) {
-      console.log(`❌ [getUserOrders] No Shopify customer access token found for user`);
       return sendResponse(res, 400, "Shopify customer access token not found. Please re-login to connect your account.");
     }
 
@@ -975,20 +935,11 @@ export const getUserOrders = async (req: any, res: Response) => {
     const tokenExpired = !user.shopify.customerAccessTokenExpiresAt || user.shopify.customerAccessTokenExpiresAt <= now;
     
     if (tokenExpired) {
-      console.log(`❌ [getUserOrders] Customer access token expired`);
       return sendResponse(res, 401, "Customer access token expired. Please re-login to refresh your session.");
     }
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-
-    console.log(`📋 [getUserOrders] Request parameters:`, { 
-      page, 
-      limit, 
-      userEmail,
-      hasToken: !!user.shopify.customerAccessToken,
-      tokenExpires: user.shopify.customerAccessTokenExpiresAt
-    });
 
     // Fetch customer orders using Storefront API with customer access token
     const ordersData = await shopifyService.getCustomerOrdersWithAccessToken(
@@ -999,12 +950,6 @@ export const getUserOrders = async (req: any, res: Response) => {
         // For simplicity, we'll fetch orders without cursor pagination for now
       }
     );
-
-    console.log(`📦 [getUserOrders] Orders data retrieved:`, {
-      orders_count: ordersData.orders.length,
-      customer: ordersData.customer,
-      total_count: ordersData.totalCount
-    });
 
     return sendResponse(res, 200, "User orders retrieved successfully", ordersData);
   } catch (error: any) {

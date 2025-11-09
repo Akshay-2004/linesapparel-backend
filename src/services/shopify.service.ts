@@ -337,20 +337,13 @@ class ShopifyService {
     // This avoids the customer PII restrictions of the GraphQL API
     try {
       const limit = params.limit || 50;
-      console.log(`🔍 [getOrdersByEmail] Searching for orders with email: ${email}`);
-      console.log(`📊 [getOrdersByEmail] Request parameters:`, { limit, params });
       
       // Try with a higher limit and different status parameters to get all orders
       const apiUrl = `/orders.json?limit=250&status=any&financial_status=any&fulfillment_status=any`;
-      console.log(`🌐 [getOrdersByEmail] Making API request to: ${apiUrl}`);
       
       const ordersResponse = await this.makeRequest<any>(apiUrl);
       
-      console.log(`📦 [getOrdersByEmail] Raw Shopify API response status:`, ordersResponse.status);
-      console.log(`📦 [getOrdersByEmail] Total orders retrieved:`, ordersResponse.data?.orders?.length || 0);
-      
       if (!ordersResponse.data || !ordersResponse.data.orders) {
-        console.log(`❌ [getOrdersByEmail] No orders data in response`);
         return {
           orders: [],
           customer: null,
@@ -364,43 +357,24 @@ class ShopifyService {
 
       // Log sample of orders to see their structure
       if (ordersResponse.data.orders.length > 0) {
-        console.log(`📋 [getOrdersByEmail] Sample order structure:`, {
-          id: ordersResponse.data.orders[0].id,
-          email: ordersResponse.data.orders[0].email,
-          created_at: ordersResponse.data.orders[0].created_at,
-          financial_status: ordersResponse.data.orders[0].financial_status,
-          total_price: ordersResponse.data.orders[0].total_price
-        });
-        
         // Log all unique emails found in orders (for debugging)
         const allEmails = ordersResponse.data.orders
           .map((order: any) => order.email)
           .filter((email: any) => email) // Remove null/undefined
           .filter((email: any, index: number, arr: any[]) => arr.indexOf(email) === index); // Remove duplicates
-        console.log(`📧 [getOrdersByEmail] All unique emails in orders:`, allEmails);
       }
 
       // Filter orders by email
-      console.log(`🔎 [getOrdersByEmail] Filtering orders by email: ${email.toLowerCase()}`);
       const userOrders = ordersResponse.data.orders.filter((order: any) => {
         const orderEmail = order.email?.toLowerCase();
         const targetEmail = email.toLowerCase();
         const matches = orderEmail === targetEmail;
         
-        if (order.email) {
-          console.log(`📨 [getOrdersByEmail] Order ${order.id}: email "${orderEmail}" ${matches ? '✅ MATCHES' : '❌ NO MATCH'} target "${targetEmail}"`);
-        } else {
-          console.log(`📭 [getOrdersByEmail] Order ${order.id}: has no email`);
-        }
-        
         return order.email && matches;
       });
 
-      console.log(`🎯 [getOrdersByEmail] Found ${userOrders.length} matching orders for email: ${email}`);
-      
+
       if (userOrders.length === 0) {
-        console.log(`⚠️ [getOrdersByEmail] No orders found for email: ${email}`);
-        console.log(`💡 [getOrdersByEmail] Suggestion: Check if the email is correct and if orders exist in Shopify`);
         return {
           orders: [],
           customer: null,
@@ -414,32 +388,12 @@ class ShopifyService {
 
       // Log details of matching orders
       userOrders.forEach((order: any, index: number) => {
-        console.log(`📋 [getOrdersByEmail] Order ${index + 1}/${userOrders.length}:`, {
-          id: order.id,
-          name: order.name,
-          email: order.email,
-          created_at: order.created_at,
-          total_price: order.total_price,
-          financial_status: order.financial_status,
-          fulfillment_status: order.fulfillment_status,
-          line_items_count: order.line_items?.length || 0,
-          fulfillments_count: order.fulfillments?.length || 0
-        });
       });
 
       // Transform the orders to match the expected format
-      console.log(`🔄 [getOrdersByEmail] Transforming ${userOrders.length} orders...`);
       const transformedOrders = userOrders.map((order: any, index: number) => {
-        console.log(`🔄 [getOrdersByEmail] Transforming order ${index + 1}: ${order.id}`);
-        
         // Process fulfillments
         const fulfillments = order.fulfillments ? order.fulfillments.map((fulfillment: any) => {
-          console.log(`📦 [getOrdersByEmail] Processing fulfillment ${fulfillment.id}:`, {
-            status: fulfillment.status,
-            tracking_number: fulfillment.tracking_number,
-            tracking_company: fulfillment.tracking_company,
-            tracking_urls: fulfillment.tracking_urls
-          });
           
           return {
             id: fulfillment.id,
@@ -460,18 +414,9 @@ class ShopifyService {
           };
         }) : [];
 
-        console.log(`📦 [getOrdersByEmail] Order ${order.id} has ${fulfillments.length} fulfillments`);
 
-        // Process line items
         const lineItems = {
           edges: order.line_items ? order.line_items.map((item: any) => {
-            console.log(`🛍️ [getOrdersByEmail] Processing line item ${item.id}:`, {
-              title: item.title,
-              quantity: item.quantity,
-              price: item.price,
-              variant_id: item.variant_id,
-              product_id: item.product_id
-            });
             
             return {
               node: {
@@ -497,7 +442,6 @@ class ShopifyService {
           }) : []
         };
 
-        console.log(`🛍️ [getOrdersByEmail] Order ${order.id} has ${lineItems.edges.length} line items`);
 
         const transformedOrder = {
           id: order.id,
@@ -521,7 +465,6 @@ class ShopifyService {
           } : undefined
         };
 
-        console.log(`✅ [getOrdersByEmail] Successfully transformed order ${order.id}`);
         return transformedOrder;
       });
 
@@ -533,8 +476,6 @@ class ShopifyService {
         lastName: userOrders[0].billing_address?.last_name || userOrders[0].shipping_address?.last_name || ''
       } : null;
 
-      console.log(`👤 [getOrdersByEmail] Customer info extracted:`, customerInfo);
-
       const result = {
         orders: transformedOrders,
         customer: customerInfo,
@@ -544,12 +485,6 @@ class ShopifyService {
         has_next_page: false,
         has_previous_page: false
       };
-
-      console.log(`🎉 [getOrdersByEmail] Final result summary:`, {
-        orders_count: result.orders.length,
-        customer_email: result.customer?.email,
-        customer_name: `${result.customer?.firstName} ${result.customer?.lastName}`.trim()
-      });
 
       return result;
     } catch (error) {
@@ -606,15 +541,12 @@ class ShopifyService {
 
   async checkCustomerExists(email: string): Promise<any> {
     try {
-      console.log(`🔍 Checking if customer exists in Shopify: ${email}`);
       const customers = await this.getCustomers({ query: `email:${email}` });
       
       if (customers && customers.length > 0) {
-        console.log('✅ Customer found in Shopify');
         return customers[0];
       }
       
-      console.log('❌ Customer not found in Shopify');
       return null;
     } catch (error) {
       console.error('❌ Error checking customer existence:', error);
@@ -906,31 +838,24 @@ class ShopifyService {
   // Webhook processing methods
   async processNewOrder(orderData: any) {
     // Process new order from webhook
-    console.log("Processing new order", orderData.id);
     // Implement your business logic here
     return true;
   }
 
   async processOrderUpdate(orderData: any) {
     // Process order update from webhook
-    console.log("Processing order update", orderData.id);
     // Implement your business logic here
     return true;
   }
 
   async processProductUpdate(productData: any) {
     // Process product update from webhook
-    console.log("Processing product update", productData.id);
     // Implement your business logic here
     return true;
   }
 
   async processInventoryUpdate(inventoryData: any) {
     // Process inventory update from webhook
-    console.log(
-      "Processing inventory update for item",
-      inventoryData.inventory_item_id
-    );
     // Implement your business logic here
     return true;
   }
@@ -1159,7 +1084,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔑 Creating customer access token for:', email);
       const result = await this.makeStorefrontRequest(mutation, variables);
       
       if (result.errors) {
@@ -1178,7 +1102,6 @@ class ShopifyService {
         throw new Error('No access token returned from Shopify');
       }
 
-      console.log('✅ Customer access token created successfully');
       return accessTokenData;
     } catch (error) {
       console.error('❌ Error creating customer access token:', error);
@@ -1256,7 +1179,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔍 Fetching customer data with access token');
       const result = await this.makeStorefrontRequest(query, variables);
       
       if (result.errors) {
@@ -1268,7 +1190,6 @@ class ShopifyService {
         throw new Error('Customer not found or access token invalid');
       }
 
-      console.log('✅ Customer data fetched successfully');
       return customer;
     } catch (error) {
       console.error('❌ Error fetching customer:', error);
@@ -1358,7 +1279,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔍 Fetching customer orders with access token', { first, after });
       const result = await this.makeStorefrontRequest(query, variables);
       
       if (result.errors) {
@@ -1372,11 +1292,6 @@ class ShopifyService {
 
       const ordersConnection = customer.orders;
       const orders = ordersConnection.edges.map((edge: any) => edge.node);
-      
-      console.log('✅ Customer orders fetched successfully', { 
-        ordersCount: orders.length,
-        totalCount: ordersConnection.totalCount 
-      });
       
       return {
         orders,
@@ -1416,7 +1331,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔄 Renewing customer access token');
       const result = await this.makeStorefrontRequest(mutation, variables);
       
       if (result.errors) {
@@ -1434,7 +1348,6 @@ class ShopifyService {
         throw new Error('No renewed access token returned from Shopify');
       }
 
-      console.log('✅ Customer access token renewed successfully');
       return accessTokenData;
     } catch (error) {
       console.error('❌ Error renewing customer access token:', error);
@@ -1593,7 +1506,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔍 Searching products with query:', searchQuery);
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       
       if (result.errors) {
@@ -1622,12 +1534,6 @@ class ShopifyService {
           minPrice = Math.min(minPrice, price);
           maxPrice = Math.max(maxPrice, price);
         });
-      });
-
-      console.log('✅ Product search completed', { 
-        productsCount: products.length,
-        vendors: Array.from(vendorSet),
-        productTypes: Array.from(productTypeSet)
       });
       
       return {
@@ -1776,7 +1682,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔍 Fetching collection products:', { collectionHandle, first, sortKey });
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       
       if (result.errors) {
@@ -1832,14 +1737,6 @@ class ShopifyService {
           minPrice = Math.min(minPrice, price);
           maxPrice = Math.max(maxPrice, price);
         });
-      });
-
-      console.log('✅ Collection products fetched successfully', { 
-        collection: collection.title,
-        totalProducts: allProducts.length,
-        filteredProducts: products.length,
-        vendors: Array.from(vendorSet),
-        productTypes: Array.from(productTypeSet)
       });
       
       return {
@@ -1920,7 +1817,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔍 Fetching product recommendations');
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       
       if (result.errors) {
@@ -1928,10 +1824,6 @@ class ShopifyService {
       }
 
       const recommendations = result.data?.productRecommendations || [];
-      
-      console.log('✅ Product recommendations fetched successfully', { 
-        count: recommendations.length
-      });
       
       return recommendations;
     } catch (error) {
@@ -2086,7 +1978,6 @@ class ShopifyService {
     };
 
     try {
-      console.log('🔍 Fetching all products with filters:', { searchQuery, first, sortKey });
       const result = await this.makeStorefrontRequest(graphqlQuery, variables);
       
       if (result.errors) {
@@ -2115,12 +2006,6 @@ class ShopifyService {
           minPrice = Math.min(minPrice, price);
           maxPrice = Math.max(maxPrice, price);
         });
-      });
-
-      console.log('✅ All products fetched successfully', { 
-        productsCount: products.length,
-        vendors: Array.from(vendorSet),
-        productTypes: Array.from(productTypeSet)
       });
       
       return {

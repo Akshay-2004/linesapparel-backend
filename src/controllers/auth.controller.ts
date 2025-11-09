@@ -85,8 +85,6 @@ export const register = async (req: Request, res: Response): Promise<any> => {
     const nameParts = name.trim().split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
-
-    console.log('🛍️ Attempting to create or link Shopify customer for:', email);
     
     // Try to create customer in Shopify or link to existing one
     let shopifyCustomer;
@@ -109,9 +107,7 @@ export const register = async (req: Request, res: Response): Promise<any> => {
         throw new Error('Shopify customer creation failed or was throttled');
       }
 
-      console.log('✅ New Shopify customer created');
     } catch (shopifyError: any) {
-      console.log('🔍 Customer creation failed, checking if customer already exists:', shopifyError.message);
       
       // Check if the error is because customer already exists
       if (
@@ -120,7 +116,6 @@ export const register = async (req: Request, res: Response): Promise<any> => {
          shopifyError.message.includes('CUSTOMER_ALREADY_EXISTS') ||
          shopifyError.message.includes('has already been taken'))
       ) {
-        console.log('🔗 Customer already exists in Shopify, attempting to link account');
         isExistingCustomer = true;
         
         // Try to get access token for existing customer
@@ -138,7 +133,6 @@ export const register = async (req: Request, res: Response): Promise<any> => {
               lastName: existingCustomer.lastName,
               phone: existingCustomer.phone
             };
-            console.log('✅ Successfully linked to existing Shopify customer');
           } else {
             throw new Error('Could not retrieve existing customer details');
           }
@@ -148,17 +142,14 @@ export const register = async (req: Request, res: Response): Promise<any> => {
           // If password doesn't match, we still continue with registration
           // but inform user that they might need to use a different password for Shopify
           if (linkError.message && linkError.message.includes('Unidentified customer')) {
-            console.log('⚠️ Password mismatch with existing Shopify customer - continuing with local registration');
             shopifyIntegrationFailed = true;
           } else {
-            console.log('⚠️ Failed to link Shopify account - continuing with local registration');
             shopifyIntegrationFailed = true;
           }
         }
       } else {
         // For any other Shopify error (network, API limits, etc.), continue with registration
         console.error('❌ Shopify customer creation failed:', shopifyError.message);
-        console.log('📝 Continuing with local registration without Shopify integration');
         shopifyIntegrationFailed = true;
       }
     }
@@ -168,10 +159,8 @@ export const register = async (req: Request, res: Response): Promise<any> => {
       try {
         const tokenData = await shopifyService.createCustomerAccessToken(email, password);
         customerAccessToken = tokenData;
-        console.log('✅ Customer access token obtained');
       } catch (tokenError: any) {
         console.error('❌ Failed to get customer access token:', tokenError.message);
-        console.log('📝 Continuing registration without Shopify access token');
         // Continue without token - user can still register in our system
       }
     }
@@ -193,17 +182,6 @@ export const register = async (req: Request, res: Response): Promise<any> => {
         : {}
     });
 
-    // Log the registration outcome
-    if (shopifyIntegrationFailed) {
-      console.log('✅ User created successfully (Shopify integration failed - user can still use the platform)');
-    } else if (isExistingCustomer) {
-      console.log('✅ User created and linked to existing Shopify customer');
-    } else if (shopifyCustomer?.id) {
-      console.log('✅ User created with new Shopify customer');
-    } else {
-      console.log('✅ User created without Shopify integration');
-    }
-
     // Generate OTP
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     
@@ -215,7 +193,6 @@ export const register = async (req: Request, res: Response): Promise<any> => {
       otpRecord.otp = otpCode;
       otpRecord.expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
       await otpRecord.save();
-      console.log('✅ OTP updated for existing email');
     } else {
       // Create new OTP record
       otpRecord = await Otp.create({
@@ -223,14 +200,12 @@ export const register = async (req: Request, res: Response): Promise<any> => {
         otp: otpCode,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
       });
-      console.log('✅ New OTP created');
     }
 
     // Send OTP email
     try {
       const emailResult = await sendOTPEmail(email, otpCode, name, 10);
       if (emailResult.success) {
-        console.log('✅ OTP email sent successfully');
       } else {
         console.error('❌ Failed to send OTP email:', emailResult.error);
       }
@@ -287,8 +262,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      console.log('🔐 User authenticated, getting Shopify customer access token');
-      
       // Get or refresh Shopify customer access token
       let customerAccessToken = user.shopify?.customerAccessToken;
       let tokenExpiresAt = user.shopify?.customerAccessTokenExpiresAt;
@@ -298,7 +271,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       const tokenExpired = !tokenExpiresAt || tokenExpiresAt <= now;
       
       if (!customerAccessToken || tokenExpired) {
-        console.log('🔄 Creating new customer access token');
         try {
           const tokenData = await shopifyService.createCustomerAccessToken(email, password);
           customerAccessToken = tokenData.accessToken;
@@ -310,7 +282,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             'shopify.customerAccessTokenExpiresAt': tokenExpiresAt
           });
           
-          console.log('✅ New customer access token created and saved');
         } catch (shopifyError: any) {
           console.error('❌ Failed to get Shopify customer access token:', shopifyError);
           
@@ -318,19 +289,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           if (shopifyError.message && 
               (shopifyError.message.includes('UNIDENTIFIED_CUSTOMER') || 
                shopifyError.message.includes('Unidentified customer'))) {
-            console.log('🔗 Customer not found in Shopify, checking if customer exists...');
-            
             try {
               // First check if customer exists in Shopify
               const existingCustomer = await shopifyService.checkCustomerExists(email);
               
               if (existingCustomer) {
-                console.log('⚠️ Customer exists in Shopify but password mismatch');
-                console.log('💡 User can still login to local system, but Shopify integration may be limited');
                 // Customer exists but password doesn't match - continue without Shopify token
               } else {
-                console.log('🔗 Customer not found in Shopify, attempting to create...');
-                
                 // Try to create the customer in Shopify
                 const shopifyCustomer = await shopifyService.createStorefrontCustomer({
                   email: user.email,
@@ -341,8 +306,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
                 });
                 
                 if (shopifyCustomer?.id) {
-                  console.log('✅ Shopify customer created, retrying access token creation');
-                  
                   // Now try to create the access token again
                   const tokenData = await shopifyService.createCustomerAccessToken(email, password);
                   customerAccessToken = tokenData.accessToken;
@@ -355,7 +318,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
                     'shopify.customerAccessTokenExpiresAt': tokenExpiresAt
                   });
                   
-                  console.log('✅ Customer created in Shopify and access token obtained');
                 }
               }
             } catch (createError: any) {
@@ -366,7 +328,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           // Don't fail the login if Shopify token creation fails
         }
       } else {
-        console.log('✅ Using existing valid customer access token');
       }
       
       sendTokenResponse(user, 200, res, req);
@@ -593,8 +554,6 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
     // Clean up OTP record
     await Otp.deleteOne({ email: email.toLowerCase().trim() });
 
-    console.log('✅ User email verified successfully:', email);
-
     // Send token response for immediate login
     sendTokenResponse(user, 200, res, req);
   } catch (error: any) {
@@ -661,7 +620,6 @@ export const resendOTP = async (req: Request, res: Response): Promise<void> => {
     try {
       const emailResult = await sendOTPEmail(email, otpCode, user.name, 10);
       if (emailResult.success) {
-        console.log('✅ OTP resent successfully to:', email);
         res.status(200).json({
           success: true,
           message: 'Verification code sent successfully! Please check your email.'
@@ -741,7 +699,6 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
     try {
       const emailResult = await sendForgotPasswordOTP(user.email, otpCode, user.name, 10);
       if (emailResult.success) {
-        console.log('✅ Forgot password OTP sent successfully to:', user.email);
       } else {
         console.error('❌ Failed to send forgot password email:', emailResult.error);
       }
@@ -838,8 +795,6 @@ export const verifyForgotPasswordOTP = async (req: Request, res: Response): Prom
     // Clean up OTP record
     await Otp.deleteOne({ email: email.toLowerCase().trim() });
 
-    console.log('✅ Forgot password OTP verified successfully for:', email);
-
     res.status(200).json({
       success: true,
       data: {
@@ -919,7 +874,6 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     try {
       const emailResult = await sendPasswordResetSuccess(user.email, user.name);
       if (emailResult.success) {
-        console.log('✅ Password reset success email sent to:', user.email);
       } else {
         console.error('❌ Failed to send password reset success email:', emailResult.error);
       }
@@ -927,8 +881,6 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       console.error('❌ Failed to send password reset success email:', emailError);
       // Don't fail the request if email fails
     }
-
-    console.log('✅ Password reset successfully for:', user.email);
 
     res.status(200).json({
       success: true,
